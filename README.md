@@ -1,1 +1,1 @@
-a
+This project aims to analyze and visualize a set of json files produced by margo (Mochi).
