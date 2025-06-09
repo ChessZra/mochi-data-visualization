@@ -1,0 +1,373 @@
+{
+    "address": "na+sm://311-0",
+    "progress_loop": {
+        "progress_timeout_value_msec": {
+            "avg": 100.000000000,
+            "max": 100.000000000,
+            "min": 100.000000000,
+            "num": 10,
+            "sum": 1000.000000000,
+            "var": 0.000000000
+        },
+        "progress_with_timeout": {
+            "avg": 0.010180330,
+            "max": 0.100203276,
+            "min": 0.000085831,
+            "num": 10,
+            "sum": 0.101803303,
+            "var": 0.009004706
+        },
+        "progress_without_timeout": {
+            "avg": 0.000000000,
+            "max": 0.000000000,
+            "min": 0.000000000,
+            "num": 0,
+            "sum": 0.000000000,
+            "var": 0.000000000
+        },
+        "trigger": {
+            "avg": 0.000002490,
+            "max": 0.000005007,
+            "min": 0.000001192,
+            "num": 9,
+            "sum": 0.000022411,
+            "var": 0.000000000
+        }
+    },
+    "rpcs": {
+        "65535:65535:1057423359:65535": {
+            "name": "insert",
+            "origin": {
+                "sent to na+sm://310-0": {
+                    "forward_cb": {
+                        "duration": {
+                            "avg": 0.000001431,
+                            "max": 0.000001431,
+                            "min": 0.000001431,
+                            "num": 1,
+                            "sum": 0.000001431,
+                            "var": 0.000000000
+                        },
+                        "relative_timestamp_from_iforward_start": {
+                            "avg": 0.000143290,
+                            "max": 0.000143290,
+                            "min": 0.000143290,
+                            "num": 1,
+                            "sum": 0.000143290,
+                            "var": 0.000000000
+                        }
+                    },
+                    "get_output": {
+                        "duration": {
+                            "avg": 0.000000238,
+                            "max": 0.000000238,
+                            "min": 0.000000238,
+                            "num": 1,
+                            "sum": 0.000000238,
+                            "var": 0.000000000
+                        },
+                        "relative_timestamp_from_wait_end": {
+                            "avg": 0.000000715,
+                            "max": 0.000000715,
+                            "min": 0.000000715,
+                            "num": 1,
+                            "sum": 0.000000715,
+                            "var": 0.000000000
+                        }
+                    },
+                    "iforward": {
+                        "duration": {
+                            "avg": 0.000030518,
+                            "max": 0.000030518,
+                            "min": 0.000030518,
+                            "num": 1,
+                            "sum": 0.000030518,
+                            "var": 0.000000000
+                        },
+                        "relative_timestamp_from_create": {
+                            "avg": 0.000000238,
+                            "max": 0.000000238,
+                            "min": 0.000000238,
+                            "num": 1,
+                            "sum": 0.000000238,
+                            "var": 0.000000000
+                        }
+                    },
+                    "iforward_wait": {
+                        "duration": {
+                            "avg": 0.000117064,
+                            "max": 0.000117064,
+                            "min": 0.000117064,
+                            "num": 1,
+                            "sum": 0.000117064,
+                            "var": 0.000000000
+                        },
+                        "relative_timestamp_from_iforward_end": {
+                            "avg": 0.000000477,
+                            "max": 0.000000477,
+                            "min": 0.000000477,
+                            "num": 1,
+                            "sum": 0.000000477,
+                            "var": 0.000000000
+                        }
+                    },
+                    "set_input": {
+                        "duration": {
+                            "avg": 0.000004292,
+                            "max": 0.000004292,
+                            "min": 0.000004292,
+                            "num": 1,
+                            "sum": 0.000004292,
+                            "var": 0.000000000
+                        },
+                        "relative_timestamp_from_iforward_start": {
+                            "avg": 0.000004292,
+                            "max": 0.000004292,
+                            "min": 0.000004292,
+                            "num": 1,
+                            "sum": 0.000004292,
+                            "var": 0.000000000
+                        }
+                    }
+                }
+            },
+            "parent_provider_id": 65535,
+            "parent_rpc_id": 65535,
+            "provider_id": 65535,
+            "rpc_id": 1057423359
+        },
+        "65535:65535:1471021055:65535": {
+            "name": "sum",
+            "origin": {
+                "sent to na+sm://310-0": {
+                    "forward_cb": {
+                        "duration": {
+                            "avg": 0.000001192,
+                            "max": 0.000001669,
+                            "min": 0.000000477,
+                            "num": 7,
+                            "sum": 0.000008345,
+                            "var": 0.000000000
+                        },
+                        "relative_timestamp_from_iforward_start": {
+                            "avg": 0.000197445,
+                            "max": 0.000357628,
+                            "min": 0.000116348,
+                            "num": 7,
+                            "sum": 0.001382113,
+                            "var": 0.000000044
+                        }
+                    },
+                    "get_output": {
+                        "duration": {
+                            "avg": 0.000000409,
+                            "max": 0.000000477,
+                            "min": 0.000000238,
+                            "num": 7,
+                            "sum": 0.000002861,
+                            "var": 0.000000000
+                        },
+                        "relative_timestamp_from_wait_end": {
+                            "avg": 0.000000647,
+                            "max": 0.000000954,
+                            "min": 0.000000238,
+                            "num": 7,
+                            "sum": 0.000004530,
+                            "var": 0.000000000
+                        }
+                    },
+                    "iforward": {
+                        "duration": {
+                            "avg": 0.000046866,
+                            "max": 0.000130415,
+                            "min": 0.000021696,
+                            "num": 7,
+                            "sum": 0.000328064,
+                            "var": 0.000000009
+                        },
+                        "relative_timestamp_from_create": {
+                            "avg": 0.000000443,
+                            "max": 0.000001431,
+                            "min": 0.000000000,
+                            "num": 7,
+                            "sum": 0.000003099,
+                            "var": 0.000000000
+                        }
+                    },
+                    "iforward_wait": {
+                        "duration": {
+                            "avg": 0.000154870,
+                            "max": 0.000233173,
+                            "min": 0.000093460,
+                            "num": 7,
+                            "sum": 0.001084089,
+                            "var": 0.000000018
+                        },
+                        "relative_timestamp_from_iforward_end": {
+                            "avg": 0.000000409,
+                            "max": 0.000000954,
+                            "min": 0.000000238,
+                            "num": 7,
+                            "sum": 0.000002861,
+                            "var": 0.000000000
+                        }
+                    },
+                    "set_input": {
+                        "duration": {
+                            "avg": 0.000000375,
+                            "max": 0.000000954,
+                            "min": 0.000000238,
+                            "num": 7,
+                            "sum": 0.000002623,
+                            "var": 0.000000000
+                        },
+                        "relative_timestamp_from_iforward_start": {
+                            "avg": 0.000004189,
+                            "max": 0.000008821,
+                            "min": 0.000001669,
+                            "num": 7,
+                            "sum": 0.000029325,
+                            "var": 0.000000000
+                        }
+                    }
+                }
+            },
+            "parent_provider_id": 65535,
+            "parent_rpc_id": 65535,
+            "provider_id": 65535,
+            "rpc_id": 1471021055
+        },
+        "65535:65535:1613234175:65535": {
+            "name": "bulk_sum",
+            "origin": {
+                "sent to na+sm://310-0": {
+                    "forward_cb": {
+                        "duration": {
+                            "avg": 0.000001431,
+                            "max": 0.000001431,
+                            "min": 0.000001431,
+                            "num": 1,
+                            "sum": 0.000001431,
+                            "var": 0.000000000
+                        },
+                        "relative_timestamp_from_iforward_start": {
+                            "avg": 0.000515461,
+                            "max": 0.000515461,
+                            "min": 0.000515461,
+                            "num": 1,
+                            "sum": 0.000515461,
+                            "var": 0.000000000
+                        }
+                    },
+                    "get_output": {
+                        "duration": {
+                            "avg": 0.000000477,
+                            "max": 0.000000477,
+                            "min": 0.000000477,
+                            "num": 1,
+                            "sum": 0.000000477,
+                            "var": 0.000000000
+                        },
+                        "relative_timestamp_from_wait_end": {
+                            "avg": 0.000000715,
+                            "max": 0.000000715,
+                            "min": 0.000000715,
+                            "num": 1,
+                            "sum": 0.000000715,
+                            "var": 0.000000000
+                        }
+                    },
+                    "iforward": {
+                        "duration": {
+                            "avg": 0.000035763,
+                            "max": 0.000035763,
+                            "min": 0.000035763,
+                            "num": 1,
+                            "sum": 0.000035763,
+                            "var": 0.000000000
+                        },
+                        "relative_timestamp_from_create": {
+                            "avg": 0.000000477,
+                            "max": 0.000000477,
+                            "min": 0.000000477,
+                            "num": 1,
+                            "sum": 0.000000477,
+                            "var": 0.000000000
+                        }
+                    },
+                    "iforward_wait": {
+                        "duration": {
+                            "avg": 0.000483751,
+                            "max": 0.000483751,
+                            "min": 0.000483751,
+                            "num": 1,
+                            "sum": 0.000483751,
+                            "var": 0.000000000
+                        },
+                        "relative_timestamp_from_iforward_end": {
+                            "avg": 0.000000477,
+                            "max": 0.000000477,
+                            "min": 0.000000477,
+                            "num": 1,
+                            "sum": 0.000000477,
+                            "var": 0.000000000
+                        }
+                    },
+                    "set_input": {
+                        "duration": {
+                            "avg": 0.000002861,
+                            "max": 0.000002861,
+                            "min": 0.000002861,
+                            "num": 1,
+                            "sum": 0.000002861,
+                            "var": 0.000000000
+                        },
+                        "relative_timestamp_from_iforward_start": {
+                            "avg": 0.000004053,
+                            "max": 0.000004053,
+                            "min": 0.000004053,
+                            "num": 1,
+                            "sum": 0.000004053,
+                            "var": 0.000000000
+                        }
+                    }
+                }
+            },
+            "parent_provider_id": 65535,
+            "parent_rpc_id": 65535,
+            "provider_id": 65535,
+            "rpc_id": 1613234175
+        },
+        "65535:65535:65535:65535": {
+            "name": "",
+            "parent_provider_id": 65535,
+            "parent_rpc_id": 65535,
+            "provider_id": 65535,
+            "rpc_id": 65535,
+            "target": {
+                "received from <unknown>": {
+                    "bulk": {
+                        "create": {
+                            "duration": {
+                                "avg": 0.000038385,
+                                "max": 0.000038385,
+                                "min": 0.000038385,
+                                "num": 1,
+                                "sum": 0.000038385,
+                                "var": 0.000000000
+                            },
+                            "size": {
+                                "avg": 40.000000000,
+                                "max": 40.000000000,
+                                "min": 40.000000000,
+                                "num": 1,
+                                "sum": 40.000000000,
+                                "var": 0.000000000
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
