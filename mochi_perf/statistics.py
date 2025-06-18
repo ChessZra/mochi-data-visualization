@@ -21,6 +21,13 @@ class MochiStatistics:
         for filename in files:
             self.add_file(filename)
 
+    def clear(self):
+        self.origin_rpc_df = pd.DataFrame()
+        self.target_rpc_df = pd.DataFrame()
+        self.bulk_create_df = pd.DataFrame()
+        self.bulk_transfer_df = pd.DataFrame()
+        self.progress_loop_df = pd.DataFrame()
+
     def add_file(self, filename: str):
         content = json.load(open(filename))
         rpcs = content['rpcs']

@@ -1,31 +1,40 @@
-# Objective
-This project aims to analyze and visualize a set of json files produced by margo (Mochi).
+# Mochi Data Visualization
 
-We want a project that is interactive and also able to produce static pdfs...
+A Python-based interactive dashboard for visualizing and analyzing Mochi HPC performance statistics. This tool provides comprehensive insights into RPC execution times, client call times, bulk transfer performance, and other key metrics from Mochi performance data.
+## Installation
+### Step 1: Clone the Repository
 
-Useful library ideas: networkx, panel, ...
+```bash
+git clone <repository-url>
+cd mochi-data-visualization
+```
 
-# Visualization Ideas
-Latency Distribution Histograms (currently implementing)
-    - Show min/max/avg latency for different RPC types
-    - Highlight outliers that exceed certain thresholds
+### Step 2: Create a Virtual Environment (Recommended)
 
-RPC Call Graph Visualization
-    - Create a directed graph showing RPC call chains (parent-child relationships)
-    - Size nodes based on execution time or frequency
-    - Color code by RPC type
+```bash
+# Create virtual environment
+python -m venv .venv
 
-Timing Breakdown Dashboard
-    - Stacked bar charts showing the various timing components of RPCs:
-        - Handler duration
-        - ULT (user-level thread) duration
-        - Forward/respond times
-        - Bulk data transfer times
+# Activate virtual environment
+# On Windows:
+.venv\Scripts\activate
+# On macOS/Linux:
+source .venv/bin/activate
+```
 
-Server Load Balancing View
-    - Heatmap showing traffic distribution across servers
-    - Metrics could include: request count, data volume, processing time
+### Step 3: Install Dependencies
 
-Bulk Data Transfer Analysis
-    - Visualize data transfer sizes vs. duration
-    - Calculate and display effective bandwidth
+```bash
+pip install panel holoviews hvplot pandas networkx pycairo ipython
+```
+
+## Usage
+
+### Quick Start
+
+1. Place your Mochi statistics JSON files in one of the data directories (`data-1/`, `data-2/`, `data-3/`)
+2. Edit the PATH variable in main.py
+
+```bash
+python main.py
+```
