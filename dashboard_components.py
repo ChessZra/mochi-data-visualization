@@ -85,7 +85,7 @@ class MochiDashboard():
             dest = context[context.index('➔') + 2:]
         else:
             src = 'None'
-            dest = context
+            dest = context.replace('\n', '')
 
         # Remember: 65535:65535:<rpc_id>:<provider_id>
         callpath_src = self.rpc_id[src]
