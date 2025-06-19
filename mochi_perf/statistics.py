@@ -35,6 +35,9 @@ class MochiStatistics:
         address = content['address']
         basename = os.path.basename(filename)
 
+        if not address or address == '':
+            address = f"unknown-{basename.split('.')[0]}"
+
         self._add_origin_rpc_stats(basename, address, rpcs)
         self._add_target_rpc_stats(basename, address, rpcs)
         self._add_bulk_create_stats(basename, address, rpcs)

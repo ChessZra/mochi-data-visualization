@@ -1,6 +1,7 @@
 import holoviews as hv
 import networkx as nx
 import pandas as pd
+import panel as pn
 
 from bokeh.models import HoverTool
 from mochi_perf.graph import OriginRPCGraph, TargetRPCGraph
@@ -89,7 +90,8 @@ def create_node_graph(stats):
     # ==================== Combine ====================
     return hv_graph * labels
 
-def create_plot(stats, metric, aggregation, rpc_name):
+def create_main_plot(stats, metric, aggregation, rpc_name):
+    
     # Determine which dataframe to use based on the metric
     if metric == 'RPC Execution Time':
         # Server-side execution time
@@ -104,7 +106,9 @@ def create_plot(stats, metric, aggregation, rpc_name):
         
     elif metric == 'Client Call Time':
         # Client-side call time
-        df = stats.origin_rpc_df['iforward']['duration'][aggregation] + stats.origin_rpc_df['iforward_wait']['relative_timestamp_from_iforward_end'][aggregation] + stats.origin_rpc_df['iforward_wait']['duration'][aggregation]
+        df = (stats.origin_rpc_df['iforward']['duration'][aggregation] + 
+              stats.origin_rpc_df['iforward_wait']['relative_timestamp_from_iforward_end'][aggregation] + 
+              stats.origin_rpc_df['iforward_wait']['duration'][aggregation])
         title = f'{aggregation.capitalize()} time spent by clients calling this RPC'
         if aggregation == 'num':
             # Divide it by three because we added iforward + iforward_wait_relative + iforward_wait_end
@@ -117,7 +121,9 @@ def create_plot(stats, metric, aggregation, rpc_name):
 
     elif metric == 'Bulk Transfer Time':
         # Bulk transfer time
-        df = stats.bulk_transfer_df['itransfer']['duration'][aggregation] + stats.bulk_transfer_df['itransfer_wait']['relative_timestamp_from_itransfer_end'][aggregation] + stats.bulk_transfer_df['itransfer_wait']['duration'][aggregation]
+        df = (stats.bulk_transfer_df['itransfer']['duration'][aggregation] + 
+              stats.bulk_transfer_df['itransfer_wait']['relative_timestamp_from_itransfer_end'][aggregation] + 
+              stats.bulk_transfer_df['itransfer_wait']['duration'][aggregation])
         title = f'{aggregation.capitalize()} bulk transfer time for this RPC'
         if aggregation == 'num':
             # Divide it by three because we added itransfer + itransfer_wait + itransfer_wait_end
@@ -140,7 +146,7 @@ def create_plot(stats, metric, aggregation, rpc_name):
             ylabel = 'Time (in seconds)'
 
     else:
-        raise Exception('')
+        raise Exception('Exception, invalid metric passed')
     
     # Group the RPCs by it's RPC path (parent -> child)
     # Different files will combine with each other
@@ -159,10 +165,9 @@ def create_plot(stats, metric, aggregation, rpc_name):
 
     df.index = new_index
     df = df.sort_values(ascending=False)
-    top5_df = df.head(5)
 
     # Create and return the plot
-    plot = top5_df.hvplot.bar(
+    plot = df.head(5).hvplot.bar(
         title=title,
         xlabel='Remote Procedure Calls (RPC)',
         ylabel=ylabel,
@@ -172,6 +177,7 @@ def create_plot(stats, metric, aggregation, rpc_name):
         fontsize={'title': 18, 'labels': 16, 'xticks': 14, 'yticks': 14},
     )
     plot.opts(default_tools=['hover'])
+    plot.opts(shared_axes=False)
     return plot
 
 def create_per_rpc_bar_plot(stats, src, dest, src_files, dest_files):
@@ -192,9 +198,10 @@ def create_per_rpc_bar_plot(stats, src, dest, src_files, dest_files):
 
     # Combine server and client plots, then sort based on longest duration
     plot_df = pd.DataFrame({'Function': functions_client + functions_server, 'Total Duration': values_client + values_server}).sort_values(by='Total Duration', ascending=False)
-    top5_df = plot_df.head(5)
-    plot = top5_df.hvplot.bar(x='Function', y='Total Duration', title='Total Duration by Function')
+    
+    plot = plot_df.head(5).hvplot.bar(x='Function', y='Total Duration', title='Total Duration by Function')
     plot.opts(default_tools=['hover'])
+    plot.opts(shared_axes=False)
     return plot
 
 def create_per_rpc_svg_origin(stats, src, dest, src_files):
@@ -281,31 +288,22 @@ def create_per_rpc_svg_target(stats, src, dest, dest_files):
     return target_rpc_graph.to_ipython_svg()
 
 def create_rpc_load_heatmap(stats, view_type='clients'):
-    """
-    Create a heatmap showing RPC load distribution
-    
-    Args:
-        stats: MochiStatistics instance
-        view_type: 'clients' or 'servers'
-    """
     if view_type == 'clients':
-        # Group by RPC type and client address
         df = stats.origin_rpc_df['iforward']['duration']['num'].groupby(['name', 'address']).sum()
-    else:
-        # Group by RPC type and server address  
+    else:  
         df = stats.target_rpc_df['handler']['duration']['num'].groupby(['name', 'address']).sum()
-    
-    # Pivot for heatmap format
-    heatmap_df = df.unstack(fill_value=0)
-    
-    # Create heatmap
-    heatmap = heatmap_df.hvplot.heatmap(
+        
+    heatmap = df.unstack(fill_value=0).hvplot.heatmap(
         title=f'RPC Load Distribution by {view_type.capitalize()}',
         xlabel=f'{view_type.capitalize()}',
-        ylabel='RPC Type',
+        ylabel='RPC Type',  
         cmap='viridis',
         width=800,
         height=400
-    )
+    )    
     heatmap.opts(default_tools=['hover'])
+    # Tricky setting: the axes are synchronized by default
+    # this messes up with other plots!
+    heatmap.opts(shared_axes=False) 
     return heatmap
+

@@ -3,7 +3,6 @@ import panel as pn
 import holoviews as hv
 import hvplot.pandas
 
-from collections import defaultdict
 from holoviews.streams import Tap
 from plotting_functions import *
 from static_functions import *
@@ -36,45 +35,40 @@ aggregation_mapping = {
 
 class MochiDashboard():
     def __init__(self, stats):
-        # Easy access
-        self.rpc_name = defaultdict() # rpc_id: rpc_name 
-        self.rpc_id = defaultdict() # rpc_name: rpc_id
-        self.rpc_name[65535] = 'None'
-        self.rpc_id['None'] = 65535
-        for index, _ in stats.origin_rpc_df.iterrows():
-            self.rpc_name[index[3]] = index[2]
-            self.rpc_id[index[2]] = index[3]
-        for index, _ in stats.target_rpc_df.iterrows():
-            self.rpc_name[index[3]] = index[2]
-            self.rpc_id[index[2]] = index[3]
+        self.rpc_name = {65535: 'None'}
+        self.rpc_id = {'None': 65535}
 
-        # Create Main Page
+        for df in [stats.origin_rpc_df, stats.target_rpc_df]:
+            for index in df.index:
+                self.rpc_name[index[3]], self.rpc_id[index[2]] = index[2], index[3]
+    
+        # Create components
         main_visualization = self._create_main_visualization(stats)
         summary_statistics = self._create_summary_statistics(stats)
         distribution_view = self._create_distribution_view(stats)
         diagnostics_panel = self._create_diagnostics_panel(stats)
-        self.main_page = pn.Column(
+
+        main_page = pn.Column(
             main_visualization, 
             summary_statistics, 
-            distribution_view, 
+            distribution_view,
             diagnostics_panel
         )
         
-        # self.trigger.value = "context" (to trigger the function with 'context')
         # Main functionality to trigger different pages (from main page to rpc-per page)
+        # self.trigger.value = "context" (to trigger the function with 'context')
         self.trigger = pn.widgets.TextInput(name='Page Toggle', value='', visible=False)
-        self.stats = stats
         @pn.depends(self.trigger)
         def get_page(context):
             if not context or context == 'back_to_main_page':
-                return self.main_page
+                return main_page
             else:
-                return self._create_per_rpc_statistics(context, self.stats)
+                return self._create_per_rpc_statistics(context, stats)
         
         template = pn.template.MaterialTemplate(
             title="Mochi Performance Dashboard", 
             header_background="#336699", 
-            main=pn.Column(get_page)
+            main=get_page
         )
         template.show()
 
@@ -168,7 +162,7 @@ class MochiDashboard():
         @pn.depends(metric_dropdown, aggregation_dropdown)
         def get_visualization(metric_choice, aggregation_choice):
             agg_method = aggregation_mapping[aggregation_choice]
-            bars = create_plot(stats, metric_choice, agg_method, self.rpc_name)
+            bars = create_main_plot(stats, metric_choice, agg_method, self.rpc_name)
         
             # === Bar click functionality ===
             tap = Tap(source=bars)
@@ -238,13 +232,33 @@ class MochiDashboard():
         ) 
    
     def _create_distribution_view(self, stats):
+        client_heatmap = create_rpc_load_heatmap(stats, view_type='clients')
+        server_heatmap = create_rpc_load_heatmap(stats, view_type='servers')
+        # Create separate layouts to avoid plot interference
+        heatmap_section = pn.Column(
+            pn.pane.Markdown("### RPC Load Distribution", styles=sub_title),
+            pn.Row(
+                pn.Column(
+                    pn.pane.Markdown("### RPC Load: Clients (calls sent)", styles=sub_title), 
+                    client_heatmap
+                ),
+                pn.Column(
+                    pn.pane.Markdown("### RPC Load: Servers (calls handled)", styles=sub_title), 
+                    server_heatmap
+                )
+            )
+        )
+        
+        graph_section = pn.Column(
+            pn.pane.Markdown("### RPC Communication Graph (Processes as nodes, RPCs as edges)", styles=sub_title),
+            pn.pane.Markdown("**Legend:** 🔵 Client  🟢 Server  🟠 Both"),    
+            create_node_graph(stats)
+        )
+        
         return pn.Column(  
             pn.pane.Markdown("## 📈 Distribution View", styles=title_style),
-            pn.Column(pn.pane.Markdown("### RPC Load: Clients (calls sent)", styles=sub_title), create_rpc_load_heatmap(stats, view_type='clients')),
-            pn.Column(pn.pane.Markdown("### RPC Load: Servers (calls handled)", styles=sub_title), create_rpc_load_heatmap(stats, view_type='servers')),
-            pn.pane.Markdown("### RPC Communication Graph (Processes as nodes, RPCs as edges)", styles=sub_title),
-            pn.pane.Markdown("**Legend:** 🔵 Client 🟢 Server 🟠 Both"),
-            create_node_graph(stats),
+            heatmap_section,
+            graph_section,
             styles=border_style
         )
 
