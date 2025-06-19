@@ -269,13 +269,43 @@ def create_per_rpc_svg_target(stats, src, dest, dest_files):
 
     # Normalize all values from 0 to 1
     target_rpc_graph = TargetRPCGraph(
-                            handler={'start': 0.0, 'duration': handler_duration / total_duration},
-                            ult={'start': ult_start / total_duration, 'duration': ult_duration / total_duration},
-                            get_input={'start': get_input_start / total_duration, 'duration': get_input_duration / total_duration},
-                            irespond={'start': irespond_start / total_duration, 'duration': irespond_duration / total_duration},
-                            set_output={'start': set_output_start / total_duration, 'duration': set_output_duration / total_duration},
-                            wait={'start': wait_start / total_duration, 'duration': wait_duration / total_duration},
-                            respond_cb={'start': respond_cb_start / total_duration, 'duration': respond_cb_duration / total_duration}
+        handler={'start': 0.0, 'duration': handler_duration / total_duration},
+        ult={'start': ult_start / total_duration, 'duration': ult_duration / total_duration},
+        get_input={'start': get_input_start / total_duration, 'duration': get_input_duration / total_duration},
+        irespond={'start': irespond_start / total_duration, 'duration': irespond_duration / total_duration},
+        set_output={'start': set_output_start / total_duration, 'duration': set_output_duration / total_duration},
+        wait={'start': wait_start / total_duration, 'duration': wait_duration / total_duration},
+        respond_cb={'start': respond_cb_start / total_duration, 'duration': respond_cb_duration / total_duration}
     )
 
     return target_rpc_graph.to_ipython_svg()
+
+def create_rpc_load_heatmap(stats, view_type='clients'):
+    """
+    Create a heatmap showing RPC load distribution
+    
+    Args:
+        stats: MochiStatistics instance
+        view_type: 'clients' or 'servers'
+    """
+    if view_type == 'clients':
+        # Group by RPC type and client address
+        df = stats.origin_rpc_df['iforward']['duration']['num'].groupby(['name', 'address']).sum()
+    else:
+        # Group by RPC type and server address  
+        df = stats.target_rpc_df['handler']['duration']['num'].groupby(['name', 'address']).sum()
+    
+    # Pivot for heatmap format
+    heatmap_df = df.unstack(fill_value=0)
+    
+    # Create heatmap
+    heatmap = heatmap_df.hvplot.heatmap(
+        title=f'RPC Load Distribution by {view_type.capitalize()}',
+        xlabel=f'{view_type.capitalize()}',
+        ylabel='RPC Type',
+        cmap='viridis',
+        width=800,
+        height=400
+    )
+    heatmap.opts(default_tools=['hover'])
+    return heatmap

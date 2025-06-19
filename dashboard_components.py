@@ -238,9 +238,10 @@ class MochiDashboard():
         ) 
    
     def _create_distribution_view(self, stats):
-
         return pn.Column(  
             pn.pane.Markdown("## 📈 Distribution View", styles=title_style),
+            pn.Column(pn.pane.Markdown("### RPC Load: Clients (calls sent)", styles=sub_title), create_rpc_load_heatmap(stats, view_type='clients')),
+            pn.Column(pn.pane.Markdown("### RPC Load: Servers (calls handled)", styles=sub_title), create_rpc_load_heatmap(stats, view_type='servers')),
             pn.pane.Markdown("### RPC Communication Graph (Processes as nodes, RPCs as edges)", styles=sub_title),
             pn.pane.Markdown("**Legend:** 🔵 Client 🟢 Server 🟠 Both"),
             create_node_graph(stats),
@@ -248,7 +249,7 @@ class MochiDashboard():
         )
 
     def _create_diagnostics_panel(self, stats):
-        return pn.Column(
+        return pn.Column(   
             pn.pane.Markdown("## 🔍 Diagnostics Panel", styles=title_style),
             pn.Row(
                 pn.widgets.TextInput(name='⚠️Potential Issue:', width=390),
