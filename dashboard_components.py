@@ -73,19 +73,11 @@ class MochiDashboard():
         template.show()
 
     def _create_per_rpc_statistics(self, context, stats):
-        # Parse the context
+        # Parse the context (which is wrapped with \n)
         if '➔' in context:
-            """
-            context is in the format:
-            origin_name\n➔ target_name
-            or:
-            target_name (without origin)
-            """
-            src = context[:context.index('➔') - 1] 
-            dest = context[context.index('➔') + 2:]
+            src, dest = context[:context.index('➔')].replace('\n', ''), context[context.index('➔') + 1:].replace('\n', '').replace(' ', '')
         else:
-            src = 'None'
-            dest = context.replace('\n', '')
+            src, dest = 'None', context.replace('\n', '')
 
         # Remember: 65535:65535:<rpc_id>:<provider_id>
         callpath_src = self.rpc_id[src]
@@ -235,29 +227,27 @@ class MochiDashboard():
         client_heatmap = create_rpc_load_heatmap(stats, view_type='clients')
         server_heatmap = create_rpc_load_heatmap(stats, view_type='servers')
         # Create separate layouts to avoid plot interference
-        heatmap_section = pn.Column(
-            pn.pane.Markdown("### RPC Load Distribution", styles=sub_title),
-            pn.Row(
-                pn.Column(
-                    pn.pane.Markdown("### RPC Load: Clients (calls sent)", styles=sub_title), 
-                    client_heatmap
-                ),
-                pn.Column(
-                    pn.pane.Markdown("### RPC Load: Servers (calls handled)", styles=sub_title), 
-                    server_heatmap
-                )
-            )
+        client_heatmap_section = pn.Column(
+            pn.pane.Markdown("### RPC Load: Clients (calls sent)", styles=sub_title), 
+            client_heatmap
+        )
+        
+        server_heatmap_section = pn.Column(
+            pn.pane.Markdown("### RPC Load: Servers (calls handled)", styles=sub_title), 
+            server_heatmap
         )
         
         graph_section = pn.Column(
             pn.pane.Markdown("### RPC Communication Graph (Processes as nodes, RPCs as edges)", styles=sub_title),
             pn.pane.Markdown("**Legend:** 🔵 Client  🟢 Server  🟠 Both"),    
-            create_node_graph(stats)
+            create_communication_graph(stats)
         )
         
         return pn.Column(  
             pn.pane.Markdown("## 📈 Distribution View", styles=title_style),
-            heatmap_section,
+            pn.pane.Markdown("### RPC Load Distribution", styles=sub_title),
+            client_heatmap_section,
+            server_heatmap_section,
             graph_section,
             styles=border_style
         )
