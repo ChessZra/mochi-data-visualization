@@ -19,10 +19,9 @@ border_style = {
     'border-radius': '10px',
     'box-shadow': '0 2px 4px rgba(0,0,0,0.1)'
 }
-sub_title = {
+sub_section_style = {
     'font-size': '18px',
     'color': '#34495e',
-    'margin-bottom': '15px'
 }
 aggregation_mapping = {
     'Total/Sum': 'sum',
@@ -88,8 +87,8 @@ class MochiDashboard():
         apply_button = pn.widgets.Button(name='Apply')    
         origin_select = pn.widgets.MultiChoice(name='Source', options=get_source_addresses_given_callpath(stats, callpath_src, callpath_dest))
         target_select = pn.widgets.MultiChoice(name='Destination', options=get_dest_addresses_given_callpath(stats, callpath_src, callpath_dest))
-        origin_title = pn.pane.Markdown('', styles=sub_title)
-        target_title = pn.pane.Markdown('', styles=sub_title)
+        origin_title = pn.pane.Markdown('', styles=title_style)
+        target_title = pn.pane.Markdown('', styles=title_style)
 
         self.src_files, self.dest_files = [], []
 
@@ -126,28 +125,28 @@ class MochiDashboard():
         
         # Return layout
         return pn.Column(
-                back_to_main_page_button,
-                pn.pane.Markdown(f"## Detail View: {dest}" if src == 'None' else f'## Detail View: {src} ➔ {dest}', styles=sub_title),           
-                pn.Row(origin_select, target_select, apply_button), 
-                graph_wrapper,
-                pn.Row(
-                    pn.Column(
-                        pn.pane.Markdown("### RPC from the sender's point of view (origin)", styles=sub_title),
-                        pn.pane.SVG("./img/rpc-origin.svg", width=300, height=400)
-                    ),
-                    pn.Column(origin_title, svg_origin_wrapper), 
+            back_to_main_page_button,
+            pn.pane.Markdown(f"## Detail View: {dest}" if src == 'None' else f'## Detail View: {src} ➔ {dest}', styles=title_style),           
+            pn.Row(origin_select, target_select, apply_button), 
+            graph_wrapper,
+            pn.Row(
+                pn.Column(
+                    pn.pane.Markdown("### RPC from the sender's point of view (origin)", styles=title_style),
+                    pn.pane.SVG("./img/rpc-origin.svg", width=300, height=400)
                 ),
-                pn.Row(                 
-                    pn.Column(
-                        pn.pane.Markdown("### RPC from the receiver's point of view (target)", styles=sub_title),
-                        pn.pane.SVG("./img/rpc-target.svg", width=300, height=400)
-                    ),
-                    pn.Column(target_title, svg_target_wrapper),
+                pn.Column(origin_title, svg_origin_wrapper), 
+            ),
+            pn.Row(                 
+                pn.Column(
+                    pn.pane.Markdown("### RPC from the receiver's point of view (target)", styles=sub_section_style),
+                    pn.pane.SVG("./img/rpc-target.svg", width=300, height=400)
                 ),
-                styles=border_style)
+                pn.Column(target_title, svg_target_wrapper),
+            ),
+            styles=border_style
+        )
 
     def _create_main_visualization(self, stats):
-
         metric_dropdown = pn.widgets.Select(name='Metric', options=['RPC Execution Time', 'Client Call Time', 'Bulk Transfer Time', 'RDMA Data Transfer Size'], value='RPC Execution Time')
         aggregation_dropdown = pn.widgets.Select(name='Aggregation', options=['Total/Sum', 'Average/Mean', 'Maximum', 'Minimum', 'Count', 'Variance'], value='Average/Mean')
 
@@ -156,7 +155,7 @@ class MochiDashboard():
             agg_method = aggregation_mapping[aggregation_choice]
             bars = create_main_plot(stats, metric_choice, agg_method, self.rpc_name)
         
-            # === Bar click functionality ===
+            #  Bar click callback
             tap = Tap(source=bars)
             @pn.depends(tap.param.x)
             def on_bar_click(x):
@@ -168,9 +167,10 @@ class MochiDashboard():
         return pn.Row(
             pn.Column(
                 pn.pane.Markdown("## 📊 Main Visualization", styles=title_style),
-                pn.pane.Markdown("### Performance Metrics Analysis", styles=sub_title),
+                pn.pane.Markdown("### Performance Metrics Analysis", styles=sub_section_style),
                 pn.Row(metric_dropdown, aggregation_dropdown),
                 get_visualization,
+                pn.pane.Markdown("💡 **Tip:** Click on any bar to view detailed per-RPC statistics for that specific RPC call", styles={'font-style': 'italic', 'font-size': '14px'}),
                 styles=border_style
             ),
         )
@@ -186,7 +186,7 @@ class MochiDashboard():
                         value=str(get_number_of_rpc_calls(stats)),
                         disabled=False,
                         styles={'background': '#f8f9fa', 'border-radius': '5px'},
-                        width=185
+                        width=200
                     )
                 ),
                 pn.Column(
@@ -196,7 +196,7 @@ class MochiDashboard():
                         value=format_time(get_average_execution_time(stats)),
                         disabled=False,
                         styles={'background': '#f8f9fa', 'border-radius': '5px'},
-                        width=185
+                        width=200
                     )
                 ),
                 pn.Column(
@@ -206,7 +206,7 @@ class MochiDashboard():
                         value=format_time(get_max_execution_time(stats)),
                         disabled=False,
                         styles={'background': '#f8f9fa', 'border-radius': '5px'},
-                        width=185
+                        width=200
                     )
                 ),
                 pn.Column(
@@ -224,28 +224,25 @@ class MochiDashboard():
         ) 
    
     def _create_distribution_view(self, stats):
-        client_heatmap = create_rpc_load_heatmap(stats, view_type='clients')
-        server_heatmap = create_rpc_load_heatmap(stats, view_type='servers')
-        # Create separate layouts to avoid plot interference
         client_heatmap_section = pn.Column(
-            pn.pane.Markdown("### RPC Load: Clients (calls sent)", styles=sub_title), 
-            client_heatmap
+            pn.pane.Markdown("### RPC Load: Clients (calls sent)", styles={'color': '#34495e'}), 
+            create_rpc_load_heatmap(stats, view_type='clients'),
         )
         
         server_heatmap_section = pn.Column(
-            pn.pane.Markdown("### RPC Load: Servers (calls handled)", styles=sub_title), 
-            server_heatmap
+            pn.pane.Markdown("### RPC Load: Servers (calls handled)", styles={'color': '#34495e'}), 
+            create_rpc_load_heatmap(stats, view_type='servers'),
         )
         
         graph_section = pn.Column(
-            pn.pane.Markdown("### RPC Communication Graph (Processes as nodes, RPCs as edges)", styles=sub_title),
+            pn.pane.Markdown("### RPC Communication Graph (Processes as nodes, RPCs as edges)", styles={'color': '#34495e'}),
             pn.pane.Markdown("**Legend:** 🔵 Client  🟢 Server  🟠 Both"),    
             create_communication_graph(stats)
         )
         
         return pn.Column(  
             pn.pane.Markdown("## 📈 Distribution View", styles=title_style),
-            pn.pane.Markdown("### RPC Load Distribution", styles=sub_title),
+            pn.pane.Markdown("### RPC Load Distribution", styles=sub_section_style),
             client_heatmap_section,
             server_heatmap_section,
             graph_section,

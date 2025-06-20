@@ -50,13 +50,13 @@ def create_main_plot(stats, metric, aggregation, rpc_name):
         'var': 'Time² (in seconds²)'
     }
     ylabel = ylabel_map.get(aggregation, 'Time (in seconds)')
-    
+        
     # Group by aggregation type
     agg_func = {'sum': 'sum', 'num': 'sum', 'avg': 'mean', 'var': 'mean', 'max': 'max', 'min': 'min'}
     df = df.groupby(["parent_rpc_id", "rpc_id"]).agg(agg_func[aggregation])
     
     # Create new index with RPC names
-    df.index = [wrap_label(f'{rpc_name[parent_id]}\n➔ {rpc_name[rpc_id]}') if parent_id != 65535 else wrap_label(f'{rpc_name[rpc_id]}') for parent_id, rpc_id in df.index]
+    df.index = [wrap_label(f'{rpc_name[parent_id]}\n➔ {rpc_name[rpc_id]}', width=25) if parent_id != 65535 else wrap_label(f'{rpc_name[rpc_id]}', width=25) for parent_id, rpc_id in df.index]
     
     # Create and return the plot
     return df.sort_values(ascending=False).head(5).hvplot.bar(
