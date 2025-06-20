@@ -40,17 +40,24 @@ def create_main_plot(stats, metric, aggregation, rpc_name):
     df = config['df']
     title = config['title']
     
-    # Apply division for num aggregation if needed
+    # Apply division for num aggregation if needed (the number of calls is measured)
     if aggregation == 'num' and config.get('divide_by_3'):
         df /= 3
     
-    # Set ylabel based on aggregation
-    ylabel_map = {
-        'num': 'Count (number of calls)',
-        'var': 'Time² (in seconds²)'
-    }
-    ylabel = ylabel_map.get(aggregation, 'Time (in seconds)')
-        
+    # Set ylabel based on aggregation and metric
+    if metric == 'RDMA Data Transfer Size':
+        ylabel_map = {
+            'num': 'Count (number of calls)',
+            'var': 'Size² (in bytes²)'
+        }
+        ylabel = ylabel_map.get(aggregation, 'Size (in bytes)')
+    else:
+        ylabel_map = {
+            'num': 'Count (number of calls)',
+            'var': 'Time² (in seconds²)'
+        }
+        ylabel = ylabel_map.get(aggregation, 'Time (in seconds)')
+
     # Group by aggregation type
     agg_func = {'sum': 'sum', 'num': 'sum', 'avg': 'mean', 'var': 'mean', 'max': 'max', 'min': 'min'}
     df = df.groupby(["parent_rpc_id", "rpc_id"]).agg(agg_func[aggregation])
@@ -193,10 +200,11 @@ def create_rpc_load_heatmap(stats, view_type='clients'):
     return heatmap
 
 def create_communication_graph(stats):
-
     # Encode stats to a network
+
+    # Define an inner class named Edge that will represent
+    # an RPC call from a node (process) to another node
     class Edge:
-        # Edges represent the RPC
         counter = 0
         def __init__(self, index):
             self.file = index[0]

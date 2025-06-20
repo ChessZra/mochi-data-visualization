@@ -131,14 +131,14 @@ class MochiDashboard():
             graph_wrapper,
             pn.Row(
                 pn.Column(
-                    pn.pane.Markdown("### RPC from the sender's point of view (origin)", styles=title_style),
+                    pn.pane.Markdown(f"### RPC from the sender's point of view ({src})", styles=title_style),
                     pn.pane.SVG("./img/rpc-origin.svg", width=300, height=400)
                 ),
                 pn.Column(origin_title, svg_origin_wrapper), 
             ),
             pn.Row(                 
                 pn.Column(
-                    pn.pane.Markdown("### RPC from the receiver's point of view (target)", styles=sub_section_style),
+                    pn.pane.Markdown(f"### RPC from the receiver's point of view ({dest})", styles=sub_section_style),
                     pn.pane.SVG("./img/rpc-target.svg", width=300, height=400)
                 ),
                 pn.Column(target_title, svg_target_wrapper),
