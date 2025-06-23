@@ -186,7 +186,7 @@ class MochiDashboard():
                         value=str(get_number_of_rpc_calls(stats)),
                         disabled=False,
                         styles={'background': '#f8f9fa', 'border-radius': '5px'},
-                        width=200
+                        width=235
                     )
                 ),
                 pn.Column(
@@ -196,7 +196,7 @@ class MochiDashboard():
                         value=format_time(get_average_execution_time(stats)),
                         disabled=False,
                         styles={'background': '#f8f9fa', 'border-radius': '5px'},
-                        width=200
+                        width=235
                     )
                 ),
                 pn.Column(
@@ -206,7 +206,7 @@ class MochiDashboard():
                         value=format_time(get_max_execution_time(stats)),
                         disabled=False,
                         styles={'background': '#f8f9fa', 'border-radius': '5px'},
-                        width=200
+                        width=235
                     )
                 ),
                 pn.Column(
@@ -216,7 +216,7 @@ class MochiDashboard():
                         value=format_data_size(get_total_data_transferred(stats)),
                         disabled=False,
                         styles={'background': '#f8f9fa', 'border-radius': '5px'},
-                        width=185   
+                        width=235   
                     )
                 )
             ),
@@ -250,11 +250,77 @@ class MochiDashboard():
         )
 
     def _create_diagnostics_panel(self, stats):
+        # Analyze statistics for potential issues
+        alerts = self._analyze_performance_issues(stats)
+        
+        # Create alert components
+        alert_components = []
+        for alert in alerts:
+            """
+            https://panel.holoviz.org/reference/panes/Alert.html
+            For details on other options for customizing the component see the layout and styling how-to guides.
+            object (str): The contextual feedback message.
+            alert_type (str): The type of Alert and one of primary, secondary, success, danger, warning, info, light, dark.
+            """
+            if alert['severity'] == 'high':
+                alert_component = pn.pane.Alert(f"🚨 **{alert['title']}**\n{alert['message']}", alert_type='danger')
+            elif alert['severity'] == 'medium':
+                alert_component = pn.pane.Alert(f"⚠️ **{alert['title']}**\n{alert['message']}", alert_type='warning')
+            else:
+                alert_component = pn.pane.Alert(f"ℹ️ **{alert['title']}**\n{alert['message']}", alert_type='info')
+            alert_components.append(alert_component)
+        
+        # If no issues found, show a success message
+        if not alerts:
+            alert_components.append(pn.pane.Alert("✅ **No Performance Issues Detected**\nYour RPC performance looks good! All metrics are within normal ranges.", alert_type='success'))
+        
         return pn.Column(   
             pn.pane.Markdown("## 🔍 Diagnostics Panel", styles=title_style),
-            pn.Row(
-                pn.widgets.TextInput(name='⚠️Potential Issue:', width=390),
-                pn.widgets.TextInput(name='⚠️Potential Issue:', width=390),
-            ),
+            pn.pane.Markdown("### Performance Analysis & Recommendations", styles=sub_section_style),
+            *alert_components,
             styles=border_style
         )
+    
+    def _analyze_performance_issues(self, stats):
+        alerts = []
+        
+        self._check_serialization_issues(stats, alerts)
+        self._check_blocking_calls(stats, alerts)
+        self._check_scheduling_issues(stats, alerts)
+
+        return alerts
+    
+    def _check_serialization_issues(self, stats, alerts):
+        
+        # TODO: Analyze stats and check for performance issues
+        
+        alerts.append({
+            'severity': 'high',
+            'title': 'Serialization Performance Issue',
+            'message': f'The RPC is spending a lot of time serializing. Consider using bulk transfers for large data to improve performance.'
+        })
+        return alerts
+    
+    def _check_blocking_calls(self, stats, alerts):
+
+        # TODO: Analyze stats and check for performance issues
+
+        alerts.append({
+            'severity': 'low',
+            'title': 'Blocking Call Performance Issue',
+            'message': f'The RPC is spending a lot of time waiting for a callback. There is an opportunity for concurrency while waiting for forward_cb.'
+        })
+        return alerts
+    
+    def _check_scheduling_issues(self, stats, alerts):
+
+        # TODO: Analyze stats and check for performance issues
+
+        alerts.append({
+            'severity': 'medium',
+            'title': 'Scheduling Performance Issue',
+            'message': f'The RPC is spending a lot of time waiting for the handler. Potential scheduling issue, consider using more threads or more servers.'
+        })
+
+        return alerts
+    
