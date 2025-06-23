@@ -87,12 +87,10 @@ class MochiDashboard():
         apply_button = pn.widgets.Button(name='Apply')    
         origin_select = pn.widgets.MultiChoice(name='Source', options=get_source_addresses_given_callpath(stats, callpath_src, callpath_dest))
         target_select = pn.widgets.MultiChoice(name='Destination', options=get_dest_addresses_given_callpath(stats, callpath_src, callpath_dest))
-        origin_title = pn.pane.Markdown('', styles=title_style)
-        target_title = pn.pane.Markdown('', styles=title_style)
 
         self.src_files, self.dest_files = [], []
 
-        # Define widget callbacks and functionality
+        # Define widget callbacks 
         def origin_on_change(event):
             self.src_files = event.new
         
@@ -106,18 +104,30 @@ class MochiDashboard():
             graph_wrapper.clear()
             svg_origin_wrapper.clear()
             svg_target_wrapper.clear()
+            origin_diagnostics_panel.clear()
+            target_diagnostics_panel.clear()
 
+            # Display bar graph
             graph_wrapper.append(create_per_rpc_bar_plot(stats, callpath_src, callpath_dest, self.src_files, self.dest_files))
+
+            # Display svgs
             svg_origin_wrapper.append(create_per_rpc_svg_origin(stats, callpath_src, callpath_dest, self.src_files))
             svg_target_wrapper.append(create_per_rpc_svg_target(stats, callpath_src, callpath_dest, self.dest_files))
 
-            origin_title.object = f"### Sender Performance Metrics"
-            target_title.object = f"### Receiver Performance Metrics"
+            # Display alerts
+            origin_rpc_alerts = self._analyze_origin_performance_issues(stats, callpath_src, callpath_dest, self.src_files)
+            target_rpc_alerts = self._analyze_target_performance_issues(stats, callpath_src, callpath_dest, self.dest_files)
+            origin_diagnostics_panel.append(pn.Column(*(self._create_alert_panel_components(origin_rpc_alerts))))
+            target_diagnostics_panel.append(pn.Column(*(self._create_alert_panel_components(target_rpc_alerts))))
 
-        # Dynamic plots
-        graph_wrapper = pn.Column(create_per_rpc_bar_plot(stats, -1, -1, [], []))
-        svg_origin_wrapper = pn.Column(create_per_rpc_svg_origin(stats, -1, -1, []))
-        svg_target_wrapper = pn.Column(create_per_rpc_svg_target(stats, -1, -1, []))
+        # Create panel components
+        graph_wrapper = pn.Column()
+        svg_origin_wrapper = pn.Column()
+        svg_target_wrapper = pn.Column()
+        origin_diagnostics_panel = pn.Column()
+        target_diagnostics_panel = pn.Column()
+        
+        # Define widget functionality
         target_select.param.watch(target_on_change, 'value')
         origin_select.param.watch(origin_on_change, 'value')
         back_to_main_page_button.on_click(on_back_button_click)
@@ -129,19 +139,21 @@ class MochiDashboard():
             pn.pane.Markdown(f"## Detail View: {dest}" if src == 'None' else f'## Detail View: {src} ➔ {dest}', styles=title_style),           
             pn.Row(origin_select, target_select, apply_button), 
             graph_wrapper,
-            pn.Row(
-                pn.Column(
-                    pn.pane.Markdown(f"### RPC from the sender's point of view ({src})", styles=title_style),
-                    pn.pane.SVG("./img/rpc-origin.svg", width=300, height=400)
+            pn.Column(
+                pn.pane.Markdown(f"### RPC from the sender's point of view ({src}):", styles=sub_section_style),
+                pn.Row(
+                    pn.pane.SVG("./img/rpc-origin.svg", width=300, height=400),
+                    pn.Column(svg_origin_wrapper, styles=sub_section_style), 
                 ),
-                pn.Column(origin_title, svg_origin_wrapper), 
+                origin_diagnostics_panel
             ),
-            pn.Row(                 
-                pn.Column(
-                    pn.pane.Markdown(f"### RPC from the receiver's point of view ({dest})", styles=sub_section_style),
-                    pn.pane.SVG("./img/rpc-target.svg", width=300, height=400)
+            pn.Column(                             
+                pn.pane.Markdown(f"### RPC from the receiver's point of view ({dest}):", styles=sub_section_style),
+                pn.Row(
+                    pn.pane.SVG("./img/rpc-target.svg", width=300, height=400),
+                    pn.Column(svg_target_wrapper, styles=sub_section_style),
                 ),
-                pn.Column(target_title, svg_target_wrapper),
+                target_diagnostics_panel
             ),
             styles=border_style
         )
@@ -251,9 +263,200 @@ class MochiDashboard():
 
     def _create_diagnostics_panel(self, stats):
         # Analyze statistics for potential issues
-        alerts = self._analyze_performance_issues(stats)
+        alerts = self._analyze_general_performance_issues(stats)
+    
+        return pn.Column(   
+            pn.pane.Markdown("## 🔍 Diagnostics Panel", styles=title_style),
+            pn.pane.Markdown("### Performance Analysis & Recommendations", styles=sub_section_style),
+            *(self._create_alert_panel_components(alerts)),
+            styles=border_style
+        )
+    
+    """
+    Diagnostic Helper Functions
+    Returns:
+        List[Dict]: A list of alert dictionaries in the format:
+            [
+                {
+                    'severity': 'low',           # Alert level: 'low', 'medium', or 'high'
+                    'title': 'Alert Title',      # Short title for the alert
+                    'message': 'Detailed message explaining the alert.'
+                },
+                ...
+            ]
+    """
+    def _analyze_origin_performance_issues(self, stats, src, dest, src_files):
+        alerts = []
+            
+        if not src_files:
+            return alerts
         
-        # Create alert components
+        # Get relevant dataframe
+        df = get_source_df_given_callpath(stats, src, dest)
+        df = df[df.index.get_level_values('address').isin(src_files)]
+
+        # Get relevant metrics from the dataframe
+        iforward_start = df['iforward']['relative_timestamp_from_create']['sum'].sum()
+        set_input_start = iforward_start + df['set_input']['relative_timestamp_from_iforward_start']['sum'].sum()
+        wait_start = iforward_start + df['iforward']['duration']['sum'].sum() + df['iforward_wait']['relative_timestamp_from_iforward_end']['sum'].sum()
+        forward_cb_start = iforward_start + df['forward_cb']['relative_timestamp_from_iforward_start']['sum'].sum()
+        get_output_start = wait_start + df['iforward_wait']['duration']['sum'].sum() + df['get_output']['relative_timestamp_from_wait_end']['sum'].sum()
+
+        iforward_duration = df['iforward']['duration']['sum'].sum()
+        set_input_duration = df['set_input']['duration']['sum'].sum()
+        wait_duration = df['iforward_wait']['duration']['sum'].sum()
+        forward_cb_duration = df['forward_cb']['duration']['sum'].sum()
+        get_output_duration = df['get_output']['duration']['sum'].sum()
+
+        total_duration = max(
+            iforward_start + iforward_duration,
+            set_input_start + set_input_duration,
+            wait_start + wait_duration,
+            forward_cb_start + forward_cb_duration,
+            get_output_start + get_output_duration,
+        )
+
+        # Analyze metrics and scan for alerts:
+        """ Detect serialization bottlenecks:
+            1. set_input duration exceeds threshold of iforward duration (e.g., >30%)
+            2. Combined set_input + get_output duration dominates total runtime (e.g., >50%)
+        """
+        set_input_ratio = set_input_duration / iforward_duration
+        if set_input_ratio > 0.3:
+            alerts.append({
+                'severity': 'high',
+                'title': 'Serialization Bottleneck',
+                'message': f'Set input takes {set_input_ratio:.1%} of forward time. Consider using bulk transfers or optimizing data structure.'
+            })              
+
+        serialization_overhead = (set_input_duration + get_output_duration) / total_duration
+        if serialization_overhead > 0.5:  # More than 50% of total time
+            alerts.append({
+                'severity': 'high',
+                'title': 'High Serialization Overhead',
+                'message': f'Serialization consumes {serialization_overhead:.1%} of total time. Consider data format optimization.'
+            })
+
+        """ Detect for blocking calls 
+            1. iforward_wait.duration dominates total runtime (e.g., >50%)
+            2. spent more time idling than working
+        """
+        # Long wait times detection
+        wait_ratio = wait_duration / total_duration
+        if wait_ratio > 0.5:  # More than 50% of time spent waiting
+            alerts.append({
+                'severity': 'medium',
+                'title': 'Blocking Call Detected',
+                'message': f'RPC spends {wait_ratio:.1%} of the total time waiting. You were blocked in the iforward_wait method for too long. Consider async patterns or parallel processing.'
+            })
+
+        busy_duration = (wait_start - iforward_duration - iforward_start)
+        if wait_duration > busy_duration:
+            alerts.append({
+                'severity': 'low',
+                'title': 'Blocking Call Detected',
+                'message': f'RPC blocked longer than active work: {format_time(wait_duration)} idle vs {format_time(busy_duration)} work. There is an opportunity to run computations to improve throughput.'
+            })
+
+        return alerts
+
+    def _analyze_target_performance_issues(self, stats, src, dest, dest_files):
+        alerts = []
+        
+        if not dest_files:
+            return alerts
+        
+        # Get client dataframe and groupby the address
+        df = get_dest_df_given_callpath(stats, src, dest)
+        df = df[df.index.get_level_values('address').isin(dest_files)]
+
+        ult_start = df['ult']['relative_timestamp_from_handler_start']['sum'].sum()
+        get_input_start = ult_start + df['get_input']['relative_timestamp_from_ult_start']['sum'].sum()
+        irespond_start = ult_start + df['irespond']['relative_timestamp_from_ult_start']['sum'].sum()
+        set_output_start = irespond_start + df['set_output']['relative_timestamp_from_irespond_start']['sum'].sum()
+        wait_start = irespond_start + df['irespond']['duration']['sum'].sum() + df['irespond_wait']['relative_timestamp_from_irespond_end']['sum'].sum()
+        respond_cb_start = irespond_start + df['respond_cb']['relative_timestamp_from_irespond_start']['sum'].sum()
+        
+        handler_duration = df['handler']['duration']['sum'].sum()
+        ult_duration = df['ult']['duration']['sum'].sum()
+        get_input_duration = df['get_input']['duration']['sum'].sum()
+        irespond_duration = df['irespond']['duration']['sum'].sum()
+        set_output_duration = df['set_output']['duration']['sum'].sum()
+        wait_duration = df['irespond_wait']['duration']['sum'].sum()
+        respond_cb_duration = df['respond_cb']['duration']['sum'].sum()
+
+        total_duration = max(
+            handler_duration,
+            ult_start + ult_duration,
+            get_input_start + get_input_duration,
+            irespond_start + irespond_duration,
+            set_output_start + set_output_duration,
+            wait_start + wait_duration,
+            respond_cb_start + respond_cb_duration
+        )
+        # Analyze metrics and scan for alerts:
+        """ Detect serialization bottlenecks:
+            1. set_output duration exceeds threshold of irespond duration (e.g., >30%)
+            2. Combined get_input + set_output duration dominates total runtime (e.g., >50%)
+        """
+        set_input_ratio = set_output_duration / irespond_duration
+        if set_input_ratio > 0.3:
+            alerts.append({
+                'severity': 'high',
+                'title': 'Serialization Bottleneck',
+                'message': f'Set output takes {set_input_ratio:.1%} of forward time. Consider using bulk transfers or optimizing data structure.'
+            })              
+
+        serialization_overhead = (get_input_duration + set_output_duration) / total_duration
+        if serialization_overhead > 0.5:  # More than 50% of total time
+            alerts.append({
+                'severity': 'high',
+                'title': 'High Serialization Overhead',
+                'message': f'Serialization consumes {serialization_overhead:.1%} of total time. Consider data format optimization.'
+            })
+
+        """ Detect for blocking calls 
+            1. iforward_wait.duration dominates total runtime (e.g., >50%)
+            2. spent more time idling than working
+        """
+        # Long wait times detection
+        wait_ratio = wait_duration / total_duration
+        if wait_ratio > 0.5:  # More than 50% of time spent waiting
+            alerts.append({
+                'severity': 'medium',
+                'title': 'Blocking Call Detected',
+                'message': f'RPC spends {wait_ratio:.1%} of the total time waiting. You were blocked in the iforward_wait method for too long. Consider async patterns or parallel processing.'
+            })
+
+        busy_duration = (wait_start - irespond_duration - irespond_start)
+        if wait_duration > busy_duration:
+            alerts.append({
+                'severity': 'low',
+                'title': 'Blocking Call Detected',
+                'message': f'RPC blocked longer than active work: {format_time(wait_duration)} idle vs {format_time(busy_duration)} work. There is an opportunity to run computations to improve throughput.'
+            })
+
+        """ Detect for scheduling issues 
+            1. Long scheduling delay before ULT starts
+        """
+        # Check for delays in handler execution
+        if ult_start > handler_duration * 5:  # Significant delay before ULT starts
+            alerts.append({
+                'severity': 'medium',
+                'title': 'Handler Scheduling Delay',
+                'message': f'ULT starts {format_time(ult_start)} after handler. Consider using more threads or more servers.'
+            })
+
+        return alerts
+
+    def _analyze_general_performance_issues(self, stats):
+        alerts = []
+        
+        # TODO: Analyze stats and check for general performance issues?
+
+        return alerts
+    
+    def _create_alert_panel_components(self, alerts):
         alert_components = []
         for alert in alerts:
             """
@@ -273,54 +476,4 @@ class MochiDashboard():
         # If no issues found, show a success message
         if not alerts:
             alert_components.append(pn.pane.Alert("✅ **No Performance Issues Detected**\nYour RPC performance looks good! All metrics are within normal ranges.", alert_type='success'))
-        
-        return pn.Column(   
-            pn.pane.Markdown("## 🔍 Diagnostics Panel", styles=title_style),
-            pn.pane.Markdown("### Performance Analysis & Recommendations", styles=sub_section_style),
-            *alert_components,
-            styles=border_style
-        )
-    
-    def _analyze_performance_issues(self, stats):
-        alerts = []
-        
-        self._check_serialization_issues(stats, alerts)
-        self._check_blocking_calls(stats, alerts)
-        self._check_scheduling_issues(stats, alerts)
-
-        return alerts
-    
-    def _check_serialization_issues(self, stats, alerts):
-        
-        # TODO: Analyze stats and check for performance issues
-        
-        alerts.append({
-            'severity': 'high',
-            'title': 'Serialization Performance Issue',
-            'message': f'The RPC is spending a lot of time serializing. Consider using bulk transfers for large data to improve performance.'
-        })
-        return alerts
-    
-    def _check_blocking_calls(self, stats, alerts):
-
-        # TODO: Analyze stats and check for performance issues
-
-        alerts.append({
-            'severity': 'low',
-            'title': 'Blocking Call Performance Issue',
-            'message': f'The RPC is spending a lot of time waiting for a callback. There is an opportunity for concurrency while waiting for forward_cb.'
-        })
-        return alerts
-    
-    def _check_scheduling_issues(self, stats, alerts):
-
-        # TODO: Analyze stats and check for performance issues
-
-        alerts.append({
-            'severity': 'medium',
-            'title': 'Scheduling Performance Issue',
-            'message': f'The RPC is spending a lot of time waiting for the handler. Potential scheduling issue, consider using more threads or more servers.'
-        })
-
-        return alerts
-    
+        return alert_components
