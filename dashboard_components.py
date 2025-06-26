@@ -289,7 +289,6 @@ class MochiDashboard():
             styles=border_style
         )
     
-    
     """
     Diagnostic Helper Functions
     Returns:
