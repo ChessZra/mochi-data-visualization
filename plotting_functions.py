@@ -6,30 +6,81 @@ from bokeh.models import HoverTool
 from mochi_perf.graph import OriginRPCGraph, TargetRPCGraph
 from static_functions import *
 
-def create_main_plot(stats, metric, aggregation, rpc_name):
+def create_graph_1(stats):
+    df = stats.origin_rpc_df
+
+    step_1 = df['iforward']['duration']['sum'].rename('iforward_sum')
+    step_2 = df['iforward_wait']['relative_timestamp_from_iforward_end']['sum'].rename('iforward_wait_rel_sum')
+    step_3 = df['iforward_wait']['duration']['sum'].rename('iforward_wait_duration_sum')
+
+    merged = pd.concat([step_1, step_2, step_3], axis=1)
+
+    merged['total_sum'] = merged.sum(axis=1)
+
+    aggregate_process_df = merged.groupby('address').agg('sum')
+
+    return aggregate_process_df['total_sum'].sort_values(ascending=False).hvplot.bar(xlabel='Address', ylabel='Total Time', title='Total RPC Call Time by Process', rot=0, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
+
+def create_graph_2(stats):
+    df = stats.target_rpc_df
+    aggregate_process_df = df['ult']['duration']['sum'].groupby('address').agg('sum')
+
+    return aggregate_process_df.sort_values(ascending=False).hvplot.bar(xlabel='Address', ylabel='Total Time', title='Total RPC Execution Time by Process', rot=0, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
+
+def create_graph_3(stats, address, rpc_name):
+  
+    df = stats.origin_rpc_df
+    filtered_process = df.xs(address, level='address')
+
+    new_x_labels = []
+    for file, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, sent_to in filtered_process.index:
+        new_x_labels.append(wrap_label(f'{rpc_name[parent_rpc_id]}\n➔ {rpc_name[rpc_id]}', width=25) if parent_rpc_id != 65535 else wrap_label(f'{rpc_name[rpc_id]}', width=25))
+
+    filtered_process.index = new_x_labels
+    step_1 = filtered_process['iforward']['duration']['sum'].rename('iforward_sum')
+    step_2 = filtered_process['iforward_wait']['relative_timestamp_from_iforward_end']['sum'].rename('iforward_wait_rel_sum')
+    step_3 = filtered_process['iforward_wait']['duration']['sum'].rename('iforward_wait_duration_sum')
+
+    merged = pd.concat([step_1, step_2, step_3], axis=1)
+
+    merged['total_sum'] = merged.sum(axis=1)
+
+    return merged['total_sum'].groupby(level=0).agg('sum').sort_values(ascending=False).head(5).hvplot.bar(xlabel='Remote Procedure Calls (RPC)', ylabel='Time', title=f'Top 5 RPC Call Times for {address}', rot=0, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
+
+def create_graph_4(stats, address, rpc_name):
+    df = stats.target_rpc_df
+    filtered_process = df.xs(address, level='address')
+
+    new_x_labels = []
+    for file, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, sent_to in filtered_process.index:
+        new_x_labels.append(wrap_label(f'{rpc_name[parent_rpc_id]}\n➔ {rpc_name[rpc_id]}', width=25) if parent_rpc_id != 65535 else wrap_label(f'{rpc_name[rpc_id]}', width=25))
+
+    filtered_process.index = new_x_labels
+
+    return filtered_process['ult']['duration']['sum'].groupby(level=0).agg('sum').sort_values(ascending=False).head(5).hvplot.bar(xlabel='Remote Procedure Calls (RPC)', ylabel='Time', title=f'Top 5 RPC Execution Times for {address}', rot=0, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
+
+def create_graph_5(stats, metric, rpc_name):
     # Configuration mapping for metrics
     metric_config = {
-        'RPC Execution Time': {
-            'df': stats.target_rpc_df["ult"]["duration"][aggregation],
-            'title': f'{aggregation.capitalize()} time spent by servers executing each RPC'
+        'Server Execution Time': {
+            'df': stats.target_rpc_df["ult"]["duration"]['sum'],
+            'title': f'Top 5 Busiest RPCs (total time executing across all servers)'
         },
         'Client Call Time': {
-            'df': (stats.origin_rpc_df['iforward']['duration'][aggregation] + 
-                   stats.origin_rpc_df['iforward_wait']['relative_timestamp_from_iforward_end'][aggregation] + 
-                   stats.origin_rpc_df['iforward_wait']['duration'][aggregation]),
-            'title': f'{aggregation.capitalize()} time spent by clients calling this RPC',
-            'divide_by_3': True
+            'df': (stats.origin_rpc_df['iforward']['duration']['sum'] + 
+                   stats.origin_rpc_df['iforward_wait']['relative_timestamp_from_iforward_end']['sum'] + 
+                   stats.origin_rpc_df['iforward_wait']['duration']['sum']),
+            'title': f'Top 5 Busiest RPCs (total time waiting across all clients)',
         },
         'Bulk Transfer Time': {
-            'df': (stats.bulk_transfer_df['itransfer']['duration'][aggregation] + 
-                   stats.bulk_transfer_df['itransfer_wait']['relative_timestamp_from_itransfer_end'][aggregation] + 
-                   stats.bulk_transfer_df['itransfer_wait']['duration'][aggregation]),
-            'title': f'{aggregation.capitalize()} bulk transfer time for this RPC',
-            'divide_by_3': True
+            'df': (stats.bulk_transfer_df['itransfer']['duration']['sum'] + 
+                   stats.bulk_transfer_df['itransfer_wait']['relative_timestamp_from_itransfer_end']['sum'] + 
+                   stats.bulk_transfer_df['itransfer_wait']['duration']['sum']),
+            'title': f'Total bulk transfer time for this RPC',
         },
         'RDMA Data Transfer Size': {
-            'df': stats.bulk_transfer_df['itransfer']['size'][aggregation],
-            'title': f'{aggregation.capitalize()} amount of data transferred using RDMA from this RPC'
+            'df': stats.bulk_transfer_df['itransfer']['size']['sum'],
+            'title': f'Total amount of data transferred using RDMA from this RPC'
         }
     }
     
@@ -39,37 +90,16 @@ def create_main_plot(stats, metric, aggregation, rpc_name):
     config = metric_config[metric]
     df = config['df']
     title = config['title']
-    
-    # Apply division for num aggregation if needed (the number of calls is measured)
-    if aggregation == 'num' and config.get('divide_by_3'):
-        df /= 3
-    
-    # Set ylabel based on aggregation and metric
-    if metric == 'RDMA Data Transfer Size':
-        ylabel_map = {
-            'num': 'Count (number of calls)',
-            'var': 'Size² (in bytes²)'
-        }
-        ylabel = ylabel_map.get(aggregation, 'Size (in bytes)')
-    else:
-        ylabel_map = {
-            'num': 'Count (number of calls)',
-            'var': 'Time² (in seconds²)'
-        }
-        ylabel = ylabel_map.get(aggregation, 'Time (in seconds)')
+    ylabel = 'Size (in bytes)' if metric == 'RDMA Data Transfer Size' else 'Time (in seconds)'
 
-    # Group by aggregation type
-    agg_func = {'sum': 'sum', 'num': 'sum', 'avg': 'mean', 'var': 'mean', 'max': 'max', 'min': 'min'}
-    df = df.groupby(["parent_rpc_id", "rpc_id"]).agg(agg_func[aggregation])
+    # Group by RPC (defined by parent_rpc_id -> rpc_id)
+    df = df.groupby(["parent_rpc_id", "rpc_id"]).agg('sum')
     
     # Create new index with RPC names
     df.index = [wrap_label(f'{rpc_name[parent_id]}\n➔ {rpc_name[rpc_id]}', width=25) if parent_id != 65535 else wrap_label(f'{rpc_name[rpc_id]}', width=25) for parent_id, rpc_id in df.index]
     
     # Create and return the plot
-    return df.sort_values(ascending=False).head(5).hvplot.bar(
-        title=title, xlabel='Remote Procedure Calls (RPC)', ylabel=ylabel,
-        rot=0, height=500, width=1000
-    ).opts(default_tools=['hover'], shared_axes=False)
+    return df.sort_values(ascending=False).head(5).hvplot.bar(title=title, xlabel='Remote Procedure Calls (RPC)', ylabel=ylabel, rot=0, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
 
 def create_per_rpc_bar_plot(stats, src, dest, src_files, dest_files):
     if not src_files and not dest_files:
@@ -196,7 +226,7 @@ def create_rpc_load_heatmap(stats, view_type='clients'):
     heatmap.opts(default_tools=['hover'])
     # Tricky setting: the axes are synchronized by default
     # this messes up with other plots!
-    heatmap.opts(shared_axes=False) 
+    heatmap.opts(shared_axes=False, default_tools=["pan"]) 
     return heatmap
 
 def create_communication_graph(stats):
@@ -272,3 +302,26 @@ def create_communication_graph(stats):
 
     # Combine
     return hv_graph * labels
+
+def get_heatmap_description(view_type):
+    if view_type == 'clients':
+        return """Description: This heatmap visualizes how RPC load is distributed across different client processes. Each cell shows the number of RPC calls made by a specific client process for each RPC type, helping you identify which clients are the most active and which RPC types they use most frequently."""
+    else: 
+        return """Description: This heatmap visualizes how RPC load is distributed across different server processes. Each cell shows the number of RPC requests handled by a specific server process for each RPC type, helping you identify which servers are handling the most requests and which RPC types are most common."""
+
+def get_graph_1_description():
+    return """Description: This chart displays the total time each process spent making RPC calls to other processes. It shows the client-side perspective of RPC communication, revealing which processes are the most active clients."""
+
+def get_graph_2_description():
+    return """Description: This chart shows the cumulative time each process spent executing RPC requests. The height of each bar represents the total execution time for that process, helping you identify which processes are doing the most computational work."""
+
+def get_graph_3_description():
+    return """Description: This detailed view shows how much time the selected process spent calling each specific RPC type. It helps you understand the client-side behavior of a particular process."""
+
+def get_graph_4_description():
+    return """Description: This chart shows how much time the selected process spent executing each type of RPC request it received. It reveals the server-side workload distribution.
+    """
+
+def get_graph_5_description():
+    return """Description: This chart displays the top 5 most resource-intensive Remote Procedure Calls (RPCs) in your system, ranked by the selected performance metric. It helps you quickly identify which RPC operations are consuming the most resources, whether that's server execution time, client call time, bulk transfer time, or data volume."""
+

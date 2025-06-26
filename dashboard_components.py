@@ -11,7 +11,6 @@ title_style = {
     'font-size': '24px',
     'font-weight': 'bold',
     'color': '#2c3e50',
-    'margin-bottom': '20px'
 }
 border_style = {
     'background': '#ffffff',
@@ -23,13 +22,13 @@ sub_section_style = {
     'font-size': '18px',
     'color': '#34495e',
 }
-aggregation_mapping = {
-    'Total/Sum': 'sum',
-    'Average/Mean': 'avg',
-    'Maximum': 'max',
-    'Minimum': 'min',
-    'Count': 'num',
-    'Variance': 'var'
+description_style = {
+    "font-size": "14px",
+    "color": "#555",
+    "line-height": "1.5",
+    "white-space": "pre-wrap", 
+    "overflow-wrap": "break-word",
+    "max-width": "800px", 
 }
 
 class MochiDashboard():
@@ -40,18 +39,15 @@ class MochiDashboard():
         for df in [stats.origin_rpc_df, stats.target_rpc_df]:
             for index in df.index:
                 self.rpc_name[index[3]], self.rpc_id[index[2]] = index[2], index[3]
-    
-        # Create components
-        main_visualization = self._create_main_visualization(stats)
-        summary_statistics = self._create_summary_statistics(stats)
-        distribution_view = self._create_distribution_view(stats)
-        diagnostics_panel = self._create_diagnostics_panel(stats)
 
         main_page = pn.Column(
-            main_visualization, 
-            summary_statistics, 
-            distribution_view,
-            diagnostics_panel
+            pn.pane.Markdown("## 📊 Main Visualization", styles=title_style),
+            self._create_section_one(stats),
+            self._create_section_two(stats),
+            self._create_section_three(stats),
+            self._create_distribution_view(stats),
+            self._create_summary_statistics(stats),
+            self._create_diagnostics_panel(stats), 
         )
         
         # Main functionality to trigger different pages (from main page to rpc-per page)
@@ -64,12 +60,60 @@ class MochiDashboard():
             else:
                 return self._create_per_rpc_statistics(context, stats)
         
-        template = pn.template.MaterialTemplate(
-            title="Mochi Performance Dashboard", 
-            header_background="#336699", 
-            main=get_page
-        )
+        template = pn.template.MaterialTemplate(title="Mochi Performance Dashboard", header_background="#336699", main=get_page)
         template.show()
+
+    def _create_section_one(self, stats):
+        return pn.Column(pn.pane.Markdown("### Section 1: Process Overview", styles=sub_section_style), create_graph_1(stats), pn.pane.Markdown(get_graph_1_description(), styles=description_style), create_graph_2(stats), pn.pane.Markdown(get_graph_2_description(), styles=description_style), styles=border_style)
+
+    def _create_section_two(self, stats):
+        process_dropdown = pn.widgets.Select(name='Process', options=get_all_addresses(stats))
+
+        @pn.depends(process_dropdown)
+        def get_graph_3(process_choice):
+            try:
+                ret = create_graph_3(stats, process_choice, self.rpc_name)
+                return ret
+            except:
+                return pn.pane.Markdown("This process doesn't have any values.")
+            
+        @pn.depends(process_dropdown)
+        def get_graph_4(process_choice):
+            try:
+                ret = create_graph_4(stats, process_choice, self.rpc_name)
+                return ret
+            except:
+                return pn.pane.Markdown("This process doesn't have any values.")
+        
+        return pn.Column(pn.pane.Markdown("### Section 2: Process Deep Dive", styles=sub_section_style), process_dropdown, get_graph_3, pn.pane.Markdown(get_graph_3_description(), styles=description_style), get_graph_4, pn.pane.Markdown(get_graph_4_description(), styles=description_style), styles=border_style)
+
+    def _create_section_three(self, stats):
+        metric_dropdown = pn.widgets.Select(name='Metric', options=['Server Execution Time', 'Client Call Time', 'Bulk Transfer Time', 'RDMA Data Transfer Size'], value='Server Execution Time')
+
+        @pn.depends(metric_dropdown)
+        def get_visualization(metric_choice):
+
+            bars = create_graph_5(stats, metric_choice, self.rpc_name)
+        
+            #  Bar click callback
+            tap = Tap(source=bars)
+            @pn.depends(tap.param.x)
+            def on_bar_click(x):
+                if x is not None:
+                    self.trigger.value = x # Trigger the next page
+                return ''
+            return pn.Column(bars, on_bar_click)
+        
+        return pn.Row(
+            pn.Column(
+                pn.pane.Markdown("### Section 3: RPC Analysis", styles=sub_section_style),
+                pn.Row(metric_dropdown),
+                get_visualization,
+                pn.pane.Markdown(get_graph_5_description(), styles=description_style),
+                pn.pane.Markdown("💡 **Tip:** Click on any bar to view detailed per-RPC statistics for that specific RPC call", styles={'font-style': 'italic', 'font-size': '14px'}),
+                styles=border_style
+            ),
+        )
 
     def _create_per_rpc_statistics(self, context, stats):
         # Parse the context (which is wrapped with \n)
@@ -157,36 +201,7 @@ class MochiDashboard():
             ),
             styles=border_style
         )
-
-    def _create_main_visualization(self, stats):
-        metric_dropdown = pn.widgets.Select(name='Metric', options=['RPC Execution Time', 'Client Call Time', 'Bulk Transfer Time', 'RDMA Data Transfer Size'], value='RPC Execution Time')
-        aggregation_dropdown = pn.widgets.Select(name='Aggregation', options=['Total/Sum', 'Average/Mean', 'Maximum', 'Minimum', 'Count', 'Variance'], value='Average/Mean')
-
-        @pn.depends(metric_dropdown, aggregation_dropdown)
-        def get_visualization(metric_choice, aggregation_choice):
-            agg_method = aggregation_mapping[aggregation_choice]
-            bars = create_main_plot(stats, metric_choice, agg_method, self.rpc_name)
         
-            #  Bar click callback
-            tap = Tap(source=bars)
-            @pn.depends(tap.param.x)
-            def on_bar_click(x):
-                if x is not None:
-                    self.trigger.value = x # Trigger the next page
-                return ''
-            return pn.Column(bars, on_bar_click)
-        
-        return pn.Row(
-            pn.Column(
-                pn.pane.Markdown("## 📊 Main Visualization", styles=title_style),
-                pn.pane.Markdown("### Performance Metrics Analysis", styles=sub_section_style),
-                pn.Row(metric_dropdown, aggregation_dropdown),
-                get_visualization,
-                pn.pane.Markdown("💡 **Tip:** Click on any bar to view detailed per-RPC statistics for that specific RPC call", styles={'font-style': 'italic', 'font-size': '14px'}),
-                styles=border_style
-            ),
-        )
-
     def _create_summary_statistics(self, stats):
         return pn.Column(
             pn.pane.Markdown("## 📋 Summary Statistics", styles=title_style),
@@ -239,11 +254,13 @@ class MochiDashboard():
         client_heatmap_section = pn.Column(
             pn.pane.Markdown("### RPC Load: Clients (calls sent)", styles={'color': '#34495e'}), 
             create_rpc_load_heatmap(stats, view_type='clients'),
+            pn.pane.Markdown(get_heatmap_description(view_type='clients'), styles=description_style),
         )
         
         server_heatmap_section = pn.Column(
             pn.pane.Markdown("### RPC Load: Servers (calls handled)", styles={'color': '#34495e'}), 
             create_rpc_load_heatmap(stats, view_type='servers'),
+            pn.pane.Markdown(get_heatmap_description(view_type='servers'), styles=description_style),
         )
         
         graph_section = pn.Column(
@@ -271,6 +288,7 @@ class MochiDashboard():
             *(self._create_alert_panel_components(alerts)),
             styles=border_style
         )
+    
     
     """
     Diagnostic Helper Functions

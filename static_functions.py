@@ -1,3 +1,5 @@
+import pandas as pd
+
 def format_time(seconds):
     if seconds < 1:
         return f"{seconds * 1000:.2f} ms"
@@ -49,3 +51,6 @@ def get_dest_df_given_callpath(stats, src, dest):
 
 def get_dest_addresses_given_callpath(stats, src, dest):
     return get_dest_df_given_callpath(stats, src, dest).index.get_level_values('address').unique().tolist()
+
+def get_all_addresses(stats):
+    return sorted(pd.Index(stats.origin_rpc_df.index.get_level_values('address')).union(stats.target_rpc_df.index.get_level_values('address')).unique().tolist())
