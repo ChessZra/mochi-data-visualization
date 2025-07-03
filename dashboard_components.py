@@ -15,12 +15,16 @@ title_style = {
 border_style = {
     'background': '#ffffff',
     'padding': '20px',
+    'margin': '10px',
     'border-radius': '10px',
     'box-shadow': '0 2px 4px rgba(0,0,0,0.1)'
 }
 sub_section_style = {
     'font-size': '18px',
     'color': '#34495e',
+    "white-space": "pre-wrap", 
+    "overflow-wrap": "break-word",
+    "max-width": "1000px", 
 }
 description_style = {
     "font-size": "14px",
@@ -28,26 +32,30 @@ description_style = {
     "line-height": "1.5",
     "white-space": "pre-wrap", 
     "overflow-wrap": "break-word",
-    "max-width": "800px", 
+    "max-width": "1000px", 
 }
+textbox_style = {
+}
+side_note_style = {'font-style': 'italic', 'color': '#7f8c8d', 'font-size': '12px'}
+
+pn.extension('tabulator')
 
 class MochiDashboard():
     def __init__(self, stats):
-        self.rpc_name = {65535: 'None'}
-        self.rpc_id = {'None': 65535}
+        self.rpc_name_dict = {65535: 'None'}
+        self.rpc_id_dict = {'None': 65535}
 
         for df in [stats.origin_rpc_df, stats.target_rpc_df]:
             for index in df.index:
-                self.rpc_name[index[3]], self.rpc_id[index[2]] = index[2], index[3]
+                self.rpc_name_dict[index[3]], self.rpc_id_dict[index[2]] = index[2], index[3]
 
         main_page = pn.Column(
             pn.pane.Markdown("## 📊 Main Visualization", styles=title_style),
             self._create_section_one(stats),
             self._create_section_two(stats),
             self._create_section_three(stats),
-            self._create_distribution_view(stats),
-            self._create_summary_statistics(stats),
-            self._create_diagnostics_panel(stats), 
+            # self._create_summary_statistics(stats),
+            # self._create_diagnostics_panel(stats), 
         )
         
         # Main functionality to trigger different pages (from main page to rpc-per page)
@@ -55,6 +63,7 @@ class MochiDashboard():
         self.trigger = pn.widgets.TextInput(name='Page Toggle', value='', visible=False)
         @pn.depends(self.trigger)
         def get_page(context):
+            print("get_page() called with context:", context)
             if not context or context == 'back_to_main_page':
                 return main_page
             else:
@@ -72,18 +81,18 @@ class MochiDashboard():
         @pn.depends(process_dropdown)
         def get_graph_3(process_choice):
             try:
-                ret = create_graph_3(stats, process_choice, self.rpc_name)
+                ret = create_graph_3(stats, process_choice, self.rpc_name_dict)
                 return ret
             except:
-                return pn.pane.Markdown("This process doesn't have any values.")
+                return pn.pane.Markdown("This process doesn't have any origin values. (Did not call any RPCs)")
             
         @pn.depends(process_dropdown)
         def get_graph_4(process_choice):
             try:
-                ret = create_graph_4(stats, process_choice, self.rpc_name)
+                ret = create_graph_4(stats, process_choice, self.rpc_name_dict)
                 return ret
             except:
-                return pn.pane.Markdown("This process doesn't have any values.")
+                return pn.pane.Markdown("This process doesn't have any target values. (Did not handle any RPCs)")
         
         return pn.Column(pn.pane.Markdown("### Section 2: Process Deep Dive", styles=sub_section_style), process_dropdown, get_graph_3, pn.pane.Markdown(get_graph_3_description(), styles=description_style), get_graph_4, pn.pane.Markdown(get_graph_4_description(), styles=description_style), styles=border_style)
 
@@ -93,7 +102,7 @@ class MochiDashboard():
         @pn.depends(metric_dropdown)
         def get_visualization(metric_choice):
 
-            bars = create_graph_5(stats, metric_choice, self.rpc_name)
+            bars = create_graph_5(stats, metric_choice, self.rpc_name_dict)
         
             #  Bar click callback
             tap = Tap(source=bars)
@@ -110,98 +119,162 @@ class MochiDashboard():
                 pn.Row(metric_dropdown),
                 get_visualization,
                 pn.pane.Markdown(get_graph_5_description(), styles=description_style),
-                pn.pane.Markdown("💡 **Tip:** Click on any bar to view detailed per-RPC statistics for that specific RPC call", styles={'font-style': 'italic', 'font-size': '14px'}),
+                pn.pane.Markdown("💡 **Tip:** Click on any bar to view detailed per-RPC statistics for that specific RPC call", styles=side_note_style),
                 styles=border_style
             ),
         )
 
     def _create_per_rpc_statistics(self, context, stats):
-        # Parse the context (which is wrapped with \n)
-        if '➔' in context:
-            src, dest = context[:context.index('➔')].replace('\n', ''), context[context.index('➔') + 1:].replace('\n', '').replace(' ', '')
-        else:
-            src, dest = 'None', context.replace('\n', '')
-
-        # Remember: 65535:65535:<rpc_id>:<provider_id>
-        callpath_src = self.rpc_id[src]
-        callpath_dest = self.rpc_id[dest]
-
-        # Define variables/widgets
+        # Define components
+        all_options = get_all_addresses(stats)
+        origin_select = pn.widgets.MultiSelect(name='Source', options=all_options, size=10, width=300)
+        target_select = pn.widgets.MultiSelect(name='Destination', options=all_options, size=10, width=300)
+        apply_button = pn.widgets.Button(name='Apply')
         back_to_main_page_button = pn.widgets.Button(name='Back to main page')
-        apply_button = pn.widgets.Button(name='Apply')    
-        origin_select = pn.widgets.MultiChoice(name='Source', options=get_source_addresses_given_callpath(stats, callpath_src, callpath_dest))
-        target_select = pn.widgets.MultiChoice(name='Destination', options=get_dest_addresses_given_callpath(stats, callpath_src, callpath_dest))
-
+        rpc_table_wrapper = pn.Column()
+        right_layout = pn.Column()
         self.src_files, self.dest_files = [], []
+        self.tab_selection = []
 
-        # Define widget callbacks 
-        def origin_on_change(event):
-            self.src_files = event.new
-        
-        def target_on_change(event):
-            self.dest_files = event.new
-        
+        # Define widget callbacks / helper functions 
         def on_back_button_click(event):
             self.trigger.value = 'back_to_main_page'
+
+        def create_rpc_dataframe():
+            rpcs = []
+            for index, row in stats.origin_rpc_df.iterrows():
+                file, address, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, sent_to = index  
                 
+                if address in self.src_files and sent_to in self.dest_files:
+                    RPC = f'{self.rpc_name_dict[parent_rpc_id]} ➔ {self.rpc_name_dict[rpc_id]}' if self.rpc_name_dict[parent_rpc_id] != 'None' else self.rpc_name_dict[rpc_id]
+                    rpcs.append({'Source': address, 'Target': sent_to, 'RPC': RPC})
+
+            for index, row in stats.target_rpc_df.iterrows():
+                file, address, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, received_from = index    
+                if received_from in self.src_files and address in self.dest_files:
+                    RPC = f'{self.rpc_name_dict[parent_rpc_id]} ➔ {self.rpc_name_dict[rpc_id]}' if self.rpc_name_dict[parent_rpc_id] != 'None' else self.rpc_name_dict[rpc_id]
+                    rpcs.append({'Source': received_from, 'Target': address, 'RPC': RPC})
+            
+            return pd.DataFrame(rpcs).drop_duplicates().reset_index(drop=True)
+
+        def origin_on_change(event):
+            self.src_files = event.new
+            print('origin changed', self.src_files)
+
+        def target_on_change(event):
+            self.dest_files = event.new
+            print('target changed', self.dest_files)
+
+        def tabulator_selection_on_change(event):
+            self.tab_selection = event.new
+            print('tab selection changed', event.new)
+
+        def on_tabulation_confirm_view_click(event):
+            print('confirm button click', self.tab_selection)
+            # Nothing selected
+            if not self.tab_selection:
+                return
+            
+            # Format it up
+            rpc_list = []
+            for row_index in self.tab_selection:
+                src_address, dst_address = rpc_table_wrapper[0][1].value.iloc[row_index]['Source'], rpc_table_wrapper[0][1].value.iloc[row_index]['Target']
+                RPC = rpc_table_wrapper[0][1].value.loc[row_index]['RPC']
+                rpc_list.append((src_address, dst_address, RPC))
+            
+            # Display
+            print("Trying to generate target graph with input:", rpc_list)
+            right_layout.clear()
+
+            layout = pn.Column(
+                pn.pane.Markdown("### Section 1: RPC Details", styles=sub_section_style),
+                create_graph_6(stats, self.rpc_id_dict, rpc_list),
+                pn.pane.Markdown(get_graph_6_description(), styles=description_style),
+                pn.pane.Markdown("💡 **Note:** If you see `None -> ...` as the origin in an RPC, it means that RPC has no parent and is a root call (i.e., it was not triggered by another RPC).", styles=side_note_style),
+                create_graph_7(stats, self.rpc_id_dict, rpc_list),
+                pn.pane.Markdown(get_graph_7_description(), styles=description_style),
+
+                pn.pane.Markdown("### Section 2: Distribution View", styles=sub_section_style),
+                self._create_distribution_view(stats, rpc_list),
+
+                pn.pane.Markdown("### Section 3: What are these RPCs doing?", styles=sub_section_style),
+                pn.Row(
+                    pn.pane.Markdown(
+                        "In this section, we explore the flow and roles of Remote Procedure Calls (RPCs) within the system. "
+                        "The diagrams below illustrate the origin and target of these RPCs, helping to clarify how different components interact and where key operations occur.",
+                        width=300, height=400,
+                        styles=description_style
+                    ),
+                    pn.pane.SVG("./img/rpc-origin.svg", width=300, height=400),
+                    pn.pane.SVG("./img/rpc-target.svg", width=300, height=400)
+                ),
+                pn.pane.Markdown("### How is time spent in each step of the RPC process?", styles=sub_section_style),
+                pn.pane.Markdown(
+                    "Below, you'll find a breakdown of how much total time is spent in each stage of the RPC process, "
+                    "for both clients and servers. Each bar shows the sum of time spent in that step, across all the RPCs you've selected. "
+                    "This helps you quickly spot which parts of the workflow take the most time, and whether the bottlenecks are on the client or server side.",
+                    styles=description_style
+                ),
+                pn.pane.Markdown("**Legend:** <span style='color:#1f77b4'>🔵 Client step</span> &nbsp;&nbsp; <span style='color:#ff7f0e'>🟠 Server step</span>", styles=description_style),
+                create_graph_8(stats, self.rpc_id_dict, rpc_list),
+                pn.pane.Markdown(
+                    "Each bar represents the total time spent in a specific step, summed across all selected RPCs. "
+                    "Compare the bars to see which steps are the most time-consuming. "
+                    "If you notice one step is much longer than the others, that's a good place to focus your optimization efforts.",
+                    styles=description_style
+                ),
+            )
+
+            right_layout.append(layout)
+
         def on_apply_button_click(event):
-            graph_wrapper.clear()
-            svg_origin_wrapper.clear()
-            svg_target_wrapper.clear()
-            origin_diagnostics_panel.clear()
-            target_diagnostics_panel.clear()
+            rpc_table_wrapper.clear()
+            
+            print(f"trying to create tabulator with source: {self.src_files} and target: {self.dest_files}")
+            tabulator = pn.widgets.Tabulator(create_rpc_dataframe(), selectable=True, disabled=True, configuration={'selectableRowsRangeMode': 'click'})
+            confirm_button = pn.widgets.Button(name='Confirm')
+            
+            confirm_button.on_click(on_tabulation_confirm_view_click)
+            tabulator.param.watch(tabulator_selection_on_change, 'selection')
+            
+            layout = pn.Column(
+                pn.pane.Markdown('#### RPC Calls Found Between Selected Processes',styles=sub_section_style),
+                tabulator,
+                pn.pane.Markdown('*Note: You may notice provider IDs are included in the logs. In our case, RPC grouping ignores provider ID and parent provider ID for simplified analysis*',styles=side_note_style),
+                pn.Row(pn.pane.Markdown('#### Selects rows on click. To select multiple use Ctrl-select, to select a range use Shift-select.', styles=side_note_style), confirm_button),
+                styles=border_style,
+                width=700,
+            )
+            rpc_table_wrapper.append(layout)
 
-            # Display bar graph
-            graph_wrapper.append(create_per_rpc_bar_plot(stats, callpath_src, callpath_dest, self.src_files, self.dest_files))
-
-            # Display svgs
-            svg_origin_wrapper.append(create_per_rpc_svg_origin(stats, callpath_src, callpath_dest, self.src_files))
-            svg_target_wrapper.append(create_per_rpc_svg_target(stats, callpath_src, callpath_dest, self.dest_files))
-
-            # Display alerts
-            origin_rpc_alerts = self._analyze_origin_performance_issues(stats, callpath_src, callpath_dest, self.src_files)
-            target_rpc_alerts = self._analyze_target_performance_issues(stats, callpath_src, callpath_dest, self.dest_files)
-            origin_diagnostics_panel.append(pn.Column(*(self._create_alert_panel_components(origin_rpc_alerts))))
-            target_diagnostics_panel.append(pn.Column(*(self._create_alert_panel_components(target_rpc_alerts))))
-
-        # Create panel components
-        graph_wrapper = pn.Column()
-        svg_origin_wrapper = pn.Column()
-        svg_target_wrapper = pn.Column()
-        origin_diagnostics_panel = pn.Column()
-        target_diagnostics_panel = pn.Column()
-        
         # Define widget functionality
         target_select.param.watch(target_on_change, 'value')
         origin_select.param.watch(origin_on_change, 'value')
         back_to_main_page_button.on_click(on_back_button_click)
         apply_button.on_click(on_apply_button_click)
-        
-        # Return layout
-        return pn.Column(
-            back_to_main_page_button,
-            pn.pane.Markdown(f"## Detail View: {dest}" if src == 'None' else f'## Detail View: {src} ➔ {dest}', styles=title_style),           
-            pn.Row(origin_select, target_select, apply_button), 
-            graph_wrapper,
+
+        left_column = pn.Column(
             pn.Column(
-                pn.pane.Markdown(f"### RPC from the sender's point of view ({src}):", styles=sub_section_style),
+                back_to_main_page_button,
+                pn.pane.Markdown("## Per-RPC Statistics", styles=title_style),     
                 pn.Row(
-                    pn.pane.SVG("./img/rpc-origin.svg", width=300, height=400),
-                    pn.Column(svg_origin_wrapper, styles=sub_section_style), 
+                    pn.pane.Markdown("• **Source**: Processes that initiate RPC calls (clients)\n• **Destination**: Processes that receive and handle RPC calls (servers)", styles=description_style),
+                    apply_button    
                 ),
-                origin_diagnostics_panel
+                pn.Row(origin_select, target_select),      
+                styles=border_style,
+                width=700
             ),
-            pn.Column(                             
-                pn.pane.Markdown(f"### RPC from the receiver's point of view ({dest}):", styles=sub_section_style),
-                pn.Row(
-                    pn.pane.SVG("./img/rpc-target.svg", width=300, height=400),
-                    pn.Column(svg_target_wrapper, styles=sub_section_style),
-                ),
-                target_diagnostics_panel
-            ),
-            styles=border_style
+            rpc_table_wrapper,    
         )
-        
+
+        right_column = pn.Column(
+            pn.pane.Markdown(f'(When the RPC rows selected and confirm button is clicked:)', styles=description_style),
+            right_layout,
+        )
+
+        return pn.Row(left_column, right_column)
+    
     def _create_summary_statistics(self, stats):
         return pn.Column(
             pn.pane.Markdown("## 📋 Summary Statistics", styles=title_style),
@@ -211,8 +284,8 @@ class MochiDashboard():
                     pn.widgets.TextInput(
                         name='Total RPCs',
                         value=str(get_number_of_rpc_calls(stats)),
-                        disabled=False,
-                        styles={'background': '#f8f9fa', 'border-radius': '5px'},
+                        disabled=True,
+                        styles=textbox_style,
                         width=235
                     )
                 ),
@@ -221,8 +294,8 @@ class MochiDashboard():
                     pn.widgets.TextInput(
                         name='Avg Execution Time',
                         value=format_time(get_average_execution_time(stats)),
-                        disabled=False,
-                        styles={'background': '#f8f9fa', 'border-radius': '5px'},
+                        disabled=True,
+                        styles=textbox_style,
                         width=235
                     )
                 ),
@@ -231,8 +304,8 @@ class MochiDashboard():
                     pn.widgets.TextInput(
                         name='Max Execution Time',
                         value=format_time(get_max_execution_time(stats)),
-                        disabled=False,
-                        styles={'background': '#f8f9fa', 'border-radius': '5px'},
+                        disabled=True,
+                        styles=textbox_style,
                         width=235
                     )
                 ),
@@ -241,8 +314,8 @@ class MochiDashboard():
                     pn.widgets.TextInput(
                         name='Total Data Transferred',
                         value=format_data_size(get_total_data_transferred(stats)),
-                        disabled=False,
-                        styles={'background': '#f8f9fa', 'border-radius': '5px'},
+                        disabled=True,
+                        styles=textbox_style,
                         width=235   
                     )
                 )
@@ -250,16 +323,16 @@ class MochiDashboard():
             styles=border_style
         ) 
    
-    def _create_distribution_view(self, stats):
+    def _create_distribution_view(self, stats, rpc_list):
         client_heatmap_section = pn.Column(
-            pn.pane.Markdown("### RPC Load: Clients (calls sent)", styles={'color': '#34495e'}), 
-            create_rpc_load_heatmap(stats, view_type='clients'),
+            pn.pane.Markdown("### RPC Load: Clients (number of calls sent)", styles={'color': '#34495e'}), 
+            create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, view_type='clients'),
             pn.pane.Markdown(get_heatmap_description(view_type='clients'), styles=description_style),
         )
         
         server_heatmap_section = pn.Column(
-            pn.pane.Markdown("### RPC Load: Servers (calls handled)", styles={'color': '#34495e'}), 
-            create_rpc_load_heatmap(stats, view_type='servers'),
+            pn.pane.Markdown("### RPC Load: Servers (number of calls handled)", styles={'color': '#34495e'}), 
+            create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, view_type='servers'),
             pn.pane.Markdown(get_heatmap_description(view_type='servers'), styles=description_style),
         )
         
@@ -270,12 +343,9 @@ class MochiDashboard():
         )
         
         return pn.Column(  
-            pn.pane.Markdown("## 📈 Distribution View", styles=title_style),
-            pn.pane.Markdown("### RPC Load Distribution", styles=sub_section_style),
             client_heatmap_section,
             server_heatmap_section,
-            graph_section,
-            styles=border_style
+            #graph_section,
         )
 
     def _create_diagnostics_panel(self, stats):

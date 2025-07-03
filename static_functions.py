@@ -53,4 +53,8 @@ def get_dest_addresses_given_callpath(stats, src, dest):
     return get_dest_df_given_callpath(stats, src, dest).index.get_level_values('address').unique().tolist()
 
 def get_all_addresses(stats):
-    return sorted(pd.Index(stats.origin_rpc_df.index.get_level_values('address')).union(stats.target_rpc_df.index.get_level_values('address')).unique().tolist())
+    address1 = stats.origin_rpc_df.index.get_level_values('address')
+    address2 = stats.origin_rpc_df.index.get_level_values('sent_to')
+    address3 = stats.target_rpc_df.index.get_level_values('address')
+    address4 = stats.target_rpc_df.index.get_level_values('received_from')
+    return sorted(address1.union(address2).union(address3).union(address4).unique().to_list())

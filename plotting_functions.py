@@ -6,6 +6,33 @@ from bokeh.models import HoverTool
 from mochi_perf.graph import OriginRPCGraph, TargetRPCGraph
 from static_functions import *
 
+def empty_bar_plot(
+    title="Empty Bar Chart",
+    xlabel="X Axis",
+    ylabel="Y Axis",
+    columns=None,
+    index_name=None,
+    height=500,
+    width=1000,
+    color=None,
+):
+    if columns is None:
+        columns = ['Value']
+    empty_df = pd.DataFrame(columns=columns)
+    if index_name:
+        empty_df.index.name = index_name
+    return empty_df.hvplot.bar(
+        x=empty_df.index.name if index_name else None,
+        y=columns[0] if columns else None,
+        title=title,
+        xlabel=xlabel,
+        ylabel=ylabel,
+        height=height,
+        width=width,
+        color=color,
+    ).opts(shared_axes=False)
+
+""" Main Page Plots """
 def create_graph_1(stats):
     df = stats.origin_rpc_df
 
@@ -19,13 +46,13 @@ def create_graph_1(stats):
 
     aggregate_process_df = merged.groupby('address').agg('sum')
 
-    return aggregate_process_df['total_sum'].sort_values(ascending=False).hvplot.bar(xlabel='Address', ylabel='Total Time', title='Total RPC Call Time by Process', rot=0, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
+    return aggregate_process_df['total_sum'].sort_values(ascending=False).hvplot.bar(xlabel='Address', ylabel='Total Time', title='Total RPC Call Time by Process', rot=45, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
 
 def create_graph_2(stats):
     df = stats.target_rpc_df
     aggregate_process_df = df['ult']['duration']['sum'].groupby('address').agg('sum')
 
-    return aggregate_process_df.sort_values(ascending=False).hvplot.bar(xlabel='Address', ylabel='Total Time', title='Total RPC Execution Time by Process', rot=0, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
+    return aggregate_process_df.sort_values(ascending=False).hvplot.bar(xlabel='Address', ylabel='Total Time', title='Total RPC Execution Time by Process', rot=45, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
 
 def create_graph_3(stats, address, rpc_name):
   
@@ -47,7 +74,7 @@ def create_graph_3(stats, address, rpc_name):
 
     return merged['total_sum'].groupby(level=0).agg('sum').sort_values(ascending=False).head(5).hvplot.bar(xlabel='Remote Procedure Calls (RPC)', ylabel='Time', title=f'Top 5 RPC Call Times for {address}', rot=0, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
 
-def create_graph_4(stats, address, rpc_name):
+def create_graph_4(stats, address, rpc_name):   
     df = stats.target_rpc_df
     filtered_process = df.xs(address, level='address')
 
@@ -101,33 +128,133 @@ def create_graph_5(stats, metric, rpc_name):
     # Create and return the plot
     return df.sort_values(ascending=False).head(5).hvplot.bar(title=title, xlabel='Remote Procedure Calls (RPC)', ylabel=ylabel, rot=0, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
 
-def create_per_rpc_bar_plot(stats, src, dest, src_files, dest_files):
-    if not src_files and not dest_files:
-        return None
+""" Per-RPC Plots """
+def create_graph_6(stats, rpc_id_dict, rpc_list):
+    rpcs = []
+    rpcs_index = []
+    not_found = []
+    for src_address, dst_address, RPC in rpc_list:
+        if '➔' in RPC:
+            src, dest = RPC[:RPC.index('➔')-1], RPC[RPC.index('➔')+2:]
+        else:
+            src, dest = 'None', RPC
 
-    # Get client data
-    df = get_source_df_given_callpath(stats, src, dest)
-    df = df[df.index.get_level_values('address').isin(src_files)]
-    functions_client = ['iforward', 'forward_cb', 'iforward_wait', 'set_input', 'get_output']
-    values_client = [df[func]['duration']['sum'].sum() for func in functions_client]
+        try:
+            df = stats.target_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.target_rpc_df.index.names.index('parent_rpc_id'), stats.target_rpc_df.index.names.index('rpc_id'), stats.target_rpc_df.index.names.index('received_from'), stats.target_rpc_df.index.names.index('address')])
+        except:
+            not_found.append((src_address, dst_address, RPC)) 
+            continue
+
+        # file_name, provider_id and parent_provider_id are ignored when we aggregate everything up
+        time_sum = df['handler']['duration']['sum'].sum()
+        time_max = df['handler']['duration']['max'].max()
+        time_min = df['handler']['duration']['min'].min()
+        call_count = df['handler']['duration']['num'].sum()
+        time_avg = time_sum / call_count
+
+        rpcs_index.append(f'RPC: {src} \n➔ {dest}\nServer: {dst_address}')
+        rpcs.append({'sum': time_sum, 'max': time_max, 'avg': time_avg, 'min': time_min, 'num': call_count})
     
-    # Get server data
-    df = get_dest_df_given_callpath(stats, src, dest)
-    df = df[df.index.get_level_values('address').isin(dest_files)]
+    if rpcs:
+        df = pd.DataFrame(rpcs).set_index([rpcs_index])
+        return df[['max', 'avg', 'min']].sort_values(by='avg', ascending=False).head(5).hvplot.bar(
+            height=500, 
+            width=1000,
+            title='Top 5 Server RPCs by Average Execution Time',
+            xlabel='RPC Calls',
+            ylabel='Execution Time (seconds)'
+        ).opts(shared_axes=False)
+    else:
+        return empty_bar_plot(title="No Data Available")
+
+def create_graph_7(stats, rpc_id_dict, rpc_list):
+    rpcs = []
+    rpcs_index = []
+    not_found = []
+    for src_address, dst_address, RPC in rpc_list:
+        if '➔' in RPC:
+            src, dest = RPC[:RPC.index('➔')-1], RPC[RPC.index('➔')+2:]
+        else:
+            src, dest = 'None', RPC
+        
+        try:
+            df = stats.origin_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.origin_rpc_df.index.names.index('parent_rpc_id'), stats.origin_rpc_df.index.names.index('rpc_id'), stats.origin_rpc_df.index.names.index('address'), stats.origin_rpc_df.index.names.index('sent_to')])
+        except:
+            not_found.append((src_address, dst_address, RPC)) 
+            continue
+        
+        # file_name, provider_id and parent_provider_id are ignored when we aggregate everything up
+        time_sum = df['iforward']['duration']['sum'].sum() + df['iforward_wait']['relative_timestamp_from_iforward_end']['sum'].sum() + df['iforward_wait']['duration']['sum'].sum()
+        time_max = df['iforward']['duration']['max'].max() + df['iforward_wait']['relative_timestamp_from_iforward_end']['max'].max() + df['iforward_wait']['duration']['max'].max()
+        time_min = df['iforward']['duration']['min'].min() + df['iforward_wait']['relative_timestamp_from_iforward_end']['min'].min() + df['iforward_wait']['duration']['min'].min()
+        call_count = df['iforward']['duration']['num'].sum()
+        time_avg = time_sum / call_count
+
+        rpcs_index.append(f'RPC: {src} \n➔ {dest}\nClient: {src_address}')
+        rpcs.append({'sum': time_sum, 'max': time_max, 'avg': time_avg, 'min': time_min, 'num': call_count})
+
+    if rpcs:
+        df = pd.DataFrame(rpcs).set_index([rpcs_index])
+        return df[['max', 'avg', 'min']].sort_values(by='avg', ascending=False).head(5).hvplot.bar(
+            height=500, 
+            width=1000,
+            title='Top 5 Client RPCs by Average Call Time',
+            xlabel='RPC Calls',
+            ylabel='Call Time (seconds)'
+        ).opts(shared_axes=False)
+    else:
+        return empty_bar_plot(title="No Data Available")
+
+def create_graph_8(stats, rpc_id_dict, rpc_list):
+
     functions_server = ['handler', 'ult', 'irespond', 'respond_cb', 'irespond_wait', 'set_output', 'get_input']
-    values_server = [df[func]['duration']['sum'].sum() for func in functions_server]
-
-    # Combine server and client plots, then sort based on longest duration
-    plot_df = pd.DataFrame({'Function': functions_client + functions_server, 'Total Duration': values_client + values_server}).sort_values(by='Total Duration', ascending=False)
+    functions_client = ['iforward', 'forward_cb', 'iforward_wait', 'set_input', 'get_output']
+    values_server = [0] * len(functions_server)
+    values_client = [0] * len(functions_client)
     
-    plot = plot_df.head(5).hvplot.bar(x='Function', y='Total Duration', title='Total Duration by Function', rot=45)
-    plot.opts(default_tools=['hover'])
-    plot.opts(shared_axes=False)
-    return plot
+    for src_address, dst_address, RPC in rpc_list:
+        if '➔' in RPC:
+            src, dest = RPC[:RPC.index('➔')-1], RPC[RPC.index('➔')+2:]
+        else:
+            src, dest = 'None', RPC
 
+        try:
+            # Get RPC server-side
+            df = stats.target_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.target_rpc_df.index.names.index('parent_rpc_id'), stats.target_rpc_df.index.names.index('rpc_id'), stats.target_rpc_df.index.names.index('received_from'), stats.target_rpc_df.index.names.index('address')])
+            for index, func in enumerate(functions_server): # We are summing because there are still provider ID's
+                values_server[index] += df[func]['duration']['sum'].sum()
+        except:
+            print('target not found')
+            pass
+
+        try:
+            # Get RPC client-side
+            df = stats.origin_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.origin_rpc_df.index.names.index('parent_rpc_id'), stats.origin_rpc_df.index.names.index('rpc_id'), stats.origin_rpc_df.index.names.index('address'), stats.origin_rpc_df.index.names.index('sent_to')])
+            for index, func in enumerate(functions_client):
+                values_client[index] += df[func]['duration']['sum'].sum()
+        except:
+            print("origin not found")
+            pass
+
+    origin_plot_df = pd.DataFrame({'Function': functions_client, 'Total Duration': values_client, 'color': '#1f77b4'}).sort_values(by='Total Duration', ascending=False)
+    target_plot_df = pd.DataFrame({'Function': functions_server, 'Total Duration': values_server, 'color':'#ff7f0e'}).sort_values(by='Total Duration', ascending=False)
+
+    title = "Total Time Spent in Each RPC Step (Aggregated Across All Selected RPCs)"
+    x_label = "RPC Step"
+    y_label = "Total Duration (s, aggregated)"
+
+    if sum(values_client) and sum(values_server):
+        return pd.concat([origin_plot_df, target_plot_df]).sort_values(by='Total Duration', ascending=False).hvplot.bar(x='Function', y='Total Duration', title=title, rot=45, color='color', xlabel=x_label, ylabel=y_label, height=500, width=1000).opts(shared_axes=False, default_tools=["pan"]) 
+    elif sum(values_client):
+        return origin_plot_df.hvplot.bar(x='Function', y='Total Duration', title=title, rot=45, color='color', xlabel=x_label, ylabel=y_label, height=500, width=1000).opts(shared_axes=False, default_tools=["pan"]) 
+    elif sum(values_server):
+        return target_plot_df.hvplot.bar(x='Function', y='Total Duration', title=title, rot=45, color='color', xlabel=x_label, ylabel=y_label, height=500, width=1000).opts(shared_axes=False, default_tools=["pan"]) 
+    else:
+        return empty_bar_plot(title="No Data Available")
+    
 def create_per_rpc_svg_origin(stats, src, dest, src_files):
     if not src_files:
-        return None
+        return empty_bar_plot(title="No Data Available")
     
     df = get_source_df_given_callpath(stats, src, dest)
     df = df[df.index.get_level_values('address').isin(src_files)]
@@ -164,7 +291,7 @@ def create_per_rpc_svg_origin(stats, src, dest, src_files):
 
 def create_per_rpc_svg_target(stats, src, dest, dest_files):
     if not dest_files:
-        return None
+        return empty_bar_plot(title="No Data Available")
     
     # Get client dataframe and groupby the address
     df = get_dest_df_given_callpath(stats, src, dest)
@@ -208,12 +335,29 @@ def create_per_rpc_svg_target(stats, src, dest, dest_files):
 
     return target_rpc_graph.to_ipython_svg()
 
-def create_rpc_load_heatmap(stats, view_type='clients'):
-    if view_type == 'clients':
-        df = stats.origin_rpc_df['iforward']['duration']['num'].groupby(['name', 'address']).sum()
-    else:  
-        df = stats.target_rpc_df['handler']['duration']['num'].groupby(['name', 'address']).sum()
-        
+def create_rpc_load_heatmap(stats, rpc_id_dict, rpc_list, view_type='clients'):
+
+    rpcs = []
+    for src_address, dst_address, RPC in rpc_list:
+        if '➔' in RPC:
+            src, dest = RPC[:RPC.index('➔')-1], RPC[RPC.index('➔')+2:]
+        else:
+            src, dest = 'None', RPC
+
+        try:
+            if view_type == 'clients':
+                df = stats.origin_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.origin_rpc_df.index.names.index('parent_rpc_id'), stats.origin_rpc_df.index.names.index('rpc_id'), stats.origin_rpc_df.index.names.index('address'), stats.origin_rpc_df.index.names.index('sent_to')])
+                rpcs.append({'name': dest,'address': src_address, 'num': df['iforward']['duration']['num'].sum()})
+            else:
+                df = stats.target_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.target_rpc_df.index.names.index('parent_rpc_id'), stats.target_rpc_df.index.names.index('rpc_id'), stats.target_rpc_df.index.names.index('received_from'), stats.target_rpc_df.index.names.index('address')])
+                rpcs.append({'name': dest,'address': dst_address, 'num': df['handler']['duration']['num'].sum()})
+        except:
+            continue
+    
+    if not rpcs: # Not found in any files
+        return empty_bar_plot(title="No Data Available")
+
+    df = pd.DataFrame(rpcs).set_index(['name', 'address']).groupby(['name', 'address']).sum()['num']        
     heatmap = df.unstack(fill_value=0).hvplot.heatmap(
         title=f'RPC Load Distribution by {view_type.capitalize()}',
         xlabel=f'{wrap_label(view_type.capitalize())}',
@@ -325,3 +469,11 @@ def get_graph_4_description():
 def get_graph_5_description():
     return """Description: This chart displays the top 5 most resource-intensive Remote Procedure Calls (RPCs) in your system, ranked by the selected performance metric. It helps you quickly identify which RPC operations are consuming the most resources, whether that's server execution time, client call time, bulk transfer time, or data volume."""
 
+def get_graph_6_description():
+    return """Description: This chart displays the top 5 RPCs (for the selected source, destination, and RPC) with the highest average execution time on the server side. For each, it shows the maximum, average, and minimum execution times, helping you identify which RPCs are the slowest to execute on the server for the selected communication path."""
+
+def get_graph_7_description():
+    return """Description: This chart displays the top 5 RPCs (for the selected source, destination, and RPC) with the highest average call time on the client side. For each, it shows the maximum, average, and minimum call times, helping you identify which RPCs are the slowest from the client's perspective for the selected communication path."""
+
+def get_graph_8_description():
+    return """Description: This chart shows how much total time is spent in each step of the RPC process, for both clients and servers. Each bar represents a different stage, such as sending, waiting, or handling a request. By comparing these bars, you can quickly see which parts of the RPC workflow take the most time, and whether the delays are happening on the client side or the server side. This helps you spot where performance improvements will matter most."""
