@@ -618,31 +618,30 @@ def create_communication_graph(stats):
 """ Plot Descriptions """
 def get_heatmap_description(view_type):
     if view_type == 'clients':
-        return """Description: This heatmap visualizes how RPC load is distributed across different client processes. Each cell shows the number of RPC calls made by a specific client process for each RPC type, helping you identify which clients are the most active and which RPC types they use most frequently."""
+        return """**What this shows:** This heatmap visualizes how RPC load is distributed across different client processes. Each cell shows the number of RPC calls made by a specific client process for each RPC type, helping you identify which clients are the most active and which RPC types they use most frequently."""
     else: 
-        return """Description: This heatmap visualizes how RPC load is distributed across different server processes. Each cell shows the number of RPC requests handled by a specific server process for each RPC type, helping you identify which servers are handling the most requests and which RPC types are most common."""
+        return """**What this shows:** This heatmap visualizes how RPC load is distributed across different server processes. Each cell shows the number of RPC requests handled by a specific server process for each RPC type, helping you identify which servers are handling the most requests and which RPC types are most common."""
     
 def get_graph_1_description():
-    return """Description: This chart displays the total time each process spent making RPC calls to other processes. It shows the client-side perspective of RPC communication, revealing which processes are the most active clients."""
+    return """**What this shows:** This chart displays the total time each process spent making RPC calls to other processes. It shows the client-side perspective of RPC communication, revealing which processes are the most active clients."""
 
 def get_graph_2_description():
-    return """Description: This chart shows the cumulative time each process spent executing RPC requests. The height of each bar represents the total execution time for that process, helping you identify which processes are doing the most computational work."""
+    return """**What this shows:** This chart shows the cumulative time each process spent executing RPC requests. The height of each bar represents the total execution time for that process, helping you identify which processes are doing the most computational work."""
 
 def get_graph_3_description():
-    return """Description: This detailed view shows how much time the selected process spent calling each specific RPC type. It helps you understand the client-side behavior of a particular process."""
+    return """**What this shows:** This detailed view shows how much time the selected process spent calling each specific RPC type. It helps you understand the client-side behavior of a particular process."""
 
 def get_graph_4_description():
-    return """Description: This chart shows how much time the selected process spent executing each type of RPC request it received. It reveals the server-side workload distribution.
-    """
+    return """**What this shows:** This chart shows how much time the selected process spent executing each type of RPC request it received. It reveals the server-side workload distribution."""
 
 def get_graph_5_description():
-    return """Description: This chart displays the top 5 most resource-intensive Remote Procedure Calls (RPCs) in your system, ranked by the selected performance metric. It helps you quickly identify which RPC operations are consuming the most resources, whether that's server execution time, client call time, bulk transfer time, or data volume."""
+    return """**What this shows:** This chart displays the top 5 most resource-intensive Remote Procedure Calls (RPCs) in your system, ranked by the selected performance metric. It helps you quickly identify which RPC operations are consuming the most resources, whether that's server execution time, client call time, bulk transfer time, or data volume."""
 
 def get_graph_6_description():
-    return """Description: This chart displays the top 5 RPCs (for the selected source, destination, and RPC) with the highest average execution time on the server side. For each, it shows the maximum, average, and minimum execution times, helping you identify which RPCs are the slowest to execute on the server for the selected communication path."""
+    return """**What this shows:** This chart displays the top 5 RPCs (for the selected source, destination, and RPC) with the highest average execution time on the server side. For each, it shows the maximum, average, and minimum execution times, helping you identify which RPCs are the slowest to execute on the server for the selected communication path."""
 
 def get_graph_7_description():
-    return """Description: This chart displays the top 5 RPCs (for the selected source, destination, and RPC) with the highest average call time on the client side. For each, it shows the maximum, average, and minimum call times, helping you identify which RPCs are the slowest from the client's perspective for the selected communication path."""
+    return """**What this shows:** This chart displays the top 5 RPCs (for the selected source, destination, and RPC) with the highest average call time on the client side. For each, it shows the maximum, average, and minimum call times, helping you identify which RPCs are the slowest from the client's perspective for the selected communication path."""
 
 def get_graph_8_description():
-    return """Each bar represents the total time spent in a specific step, summed across all selected RPCs. Compare the bars to see which steps are the most time-consuming. If you notice one step is much longer than the others, that's a good place to focus your optimization efforts."""
+    return """**What this shows:** Each bar represents the total time spent in a specific step, summed across all selected RPCs. Compare the bars to see which steps are the most time-consuming. If you notice one step is much longer than the others, that's a good place to focus your optimization efforts."""
