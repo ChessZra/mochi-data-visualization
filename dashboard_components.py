@@ -159,18 +159,14 @@ class MochiDashboard():
 
         def origin_on_change(event):
             self.src_files = event.new
-            print('origin changed', self.src_files)
 
         def target_on_change(event):
             self.dest_files = event.new
-            print('target changed', self.dest_files)
 
         def tabulator_selection_on_change(event):
             self.tab_selection = event.new
-            print('tab selection changed', event.new)
 
         def on_tabulation_confirm_view_click(event):
-            print('confirm button click', self.tab_selection)
             # Nothing selected
             if not self.tab_selection:
                 return
@@ -183,7 +179,6 @@ class MochiDashboard():
                 rpc_list.append((src_address, dst_address, RPC))
             
             # Display
-            print("Trying to generate target graph with input:", rpc_list)
             right_layout.clear()
 
             layout = pn.Column(
@@ -218,11 +213,12 @@ class MochiDashboard():
                 pn.pane.Markdown("**Legend:** <span style='color:#1f77b4'>🔵 Client step</span> &nbsp;&nbsp; <span style='color:#ff7f0e'>🟠 Server step</span>", styles=description_style),
                 create_graph_8(stats, self.rpc_id_dict, rpc_list),
                 pn.pane.Markdown(
-                    "Each bar represents the total time spent in a specific step, summed across all selected RPCs. "
-                    "Compare the bars to see which steps are the most time-consuming. "
-                    "If you notice one step is much longer than the others, that's a good place to focus your optimization efforts.",
+                    get_graph_8_description(),
                     styles=description_style
                 ),
+                pn.pane.Markdown("### Which Server/Client Functions Are Most Unpredictable? (Performance Variability - Mean ± Std Dev)", styles=sub_section_style),
+                create_graph_9(stats, self.rpc_id_dict, rpc_list),
+                create_graph_10(stats, self.rpc_id_dict, rpc_list),
             )
 
             right_layout.append(layout)
@@ -230,7 +226,6 @@ class MochiDashboard():
         def on_apply_button_click(event):
             rpc_table_wrapper.clear()
             
-            print(f"trying to create tabulator with source: {self.src_files} and target: {self.dest_files}")
             tabulator = pn.widgets.Tabulator(create_rpc_dataframe(), selectable=True, disabled=True, configuration={'selectableRowsRangeMode': 'click'})
             confirm_button = pn.widgets.Button(name='Confirm')
             

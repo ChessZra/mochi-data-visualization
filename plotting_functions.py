@@ -6,6 +6,13 @@ from bokeh.models import HoverTool
 from mochi_perf.graph import OriginRPCGraph, TargetRPCGraph
 from static_functions import *
 
+def get_src_dst_from_rpc_string(RPC):
+    if '➔' in RPC:
+        src, dest = RPC[:RPC.index('➔')-1], RPC[RPC.index('➔')+2:]
+    else:
+        src, dest = 'None', RPC
+    return src, dest
+
 def empty_bar_plot(
     title="Empty Bar Chart",
     xlabel="X Axis",
@@ -55,7 +62,6 @@ def create_graph_2(stats):
     return aggregate_process_df.sort_values(ascending=False).hvplot.bar(xlabel='Address', ylabel='Total Time', title='Total RPC Execution Time by Process', rot=45, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
 
 def create_graph_3(stats, address, rpc_name):
-  
     df = stats.origin_rpc_df
     filtered_process = df.xs(address, level='address')
 
@@ -134,10 +140,7 @@ def create_graph_6(stats, rpc_id_dict, rpc_list):
     rpcs_index = []
     not_found = []
     for src_address, dst_address, RPC in rpc_list:
-        if '➔' in RPC:
-            src, dest = RPC[:RPC.index('➔')-1], RPC[RPC.index('➔')+2:]
-        else:
-            src, dest = 'None', RPC
+        src, dest = get_src_dst_from_rpc_string(RPC)
 
         try:
             df = stats.target_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.target_rpc_df.index.names.index('parent_rpc_id'), stats.target_rpc_df.index.names.index('rpc_id'), stats.target_rpc_df.index.names.index('received_from'), stats.target_rpc_df.index.names.index('address')])
@@ -152,7 +155,7 @@ def create_graph_6(stats, rpc_id_dict, rpc_list):
         call_count = df['handler']['duration']['num'].sum()
         time_avg = time_sum / call_count
 
-        rpcs_index.append(f'RPC: {src} \n➔ {dest}\nServer: {dst_address}')
+        rpcs_index.append(f'{src} \n➔ {dest}\n{dst_address}')
         rpcs.append({'sum': time_sum, 'max': time_max, 'avg': time_avg, 'min': time_min, 'num': call_count})
     
     if rpcs:
@@ -172,10 +175,7 @@ def create_graph_7(stats, rpc_id_dict, rpc_list):
     rpcs_index = []
     not_found = []
     for src_address, dst_address, RPC in rpc_list:
-        if '➔' in RPC:
-            src, dest = RPC[:RPC.index('➔')-1], RPC[RPC.index('➔')+2:]
-        else:
-            src, dest = 'None', RPC
+        src, dest = get_src_dst_from_rpc_string(RPC)
         
         try:
             df = stats.origin_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.origin_rpc_df.index.names.index('parent_rpc_id'), stats.origin_rpc_df.index.names.index('rpc_id'), stats.origin_rpc_df.index.names.index('address'), stats.origin_rpc_df.index.names.index('sent_to')])
@@ -190,7 +190,7 @@ def create_graph_7(stats, rpc_id_dict, rpc_list):
         call_count = df['iforward']['duration']['num'].sum()
         time_avg = time_sum / call_count
 
-        rpcs_index.append(f'RPC: {src} \n➔ {dest}\nClient: {src_address}')
+        rpcs_index.append(f'{src} \n➔ {dest}\n{src_address}')
         rpcs.append({'sum': time_sum, 'max': time_max, 'avg': time_avg, 'min': time_min, 'num': call_count})
 
     if rpcs:
@@ -213,10 +213,7 @@ def create_graph_8(stats, rpc_id_dict, rpc_list):
     values_client = [0] * len(functions_client)
     
     for src_address, dst_address, RPC in rpc_list:
-        if '➔' in RPC:
-            src, dest = RPC[:RPC.index('➔')-1], RPC[RPC.index('➔')+2:]
-        else:
-            src, dest = 'None', RPC
+        src, dest = get_src_dst_from_rpc_string(RPC)
 
         try:
             # Get RPC server-side
@@ -224,7 +221,6 @@ def create_graph_8(stats, rpc_id_dict, rpc_list):
             for index, func in enumerate(functions_server): # We are summing because there are still provider ID's
                 values_server[index] += df[func]['duration']['sum'].sum()
         except:
-            print('target not found')
             pass
 
         try:
@@ -233,7 +229,6 @@ def create_graph_8(stats, rpc_id_dict, rpc_list):
             for index, func in enumerate(functions_client):
                 values_client[index] += df[func]['duration']['sum'].sum()
         except:
-            print("origin not found")
             pass
 
     origin_plot_df = pd.DataFrame({'Function': functions_client, 'Total Duration': values_client, 'color': '#1f77b4'}).sort_values(by='Total Duration', ascending=False)
@@ -251,7 +246,183 @@ def create_graph_8(stats, rpc_id_dict, rpc_list):
         return target_plot_df.hvplot.bar(x='Function', y='Total Duration', title=title, rot=45, color='color', xlabel=x_label, ylabel=y_label, height=500, width=1000).opts(shared_axes=False, default_tools=["pan"]) 
     else:
         return empty_bar_plot(title="No Data Available")
+
+def create_graph_9(stats, rpc_id_dict, rpc_list):
+    functions_server = ['handler', 'ult', 'irespond', 'respond_cb', 'irespond_wait', 'set_output', 'get_input']
     
+    mean_server = [None] * len(functions_server)
+    var_server = [None] * len(functions_server)
+
+    num_rpc = [[] for _ in range(len(functions_server))]
+    sum_rpc = [[] for _ in range(len(functions_server))]
+    mean_rpc = [[] for _ in range(len(functions_server))]
+    var_rpc = [[] for _ in range(len(functions_server))]
+
+    for src_address, dst_address, RPC in rpc_list:
+        src, dest = get_src_dst_from_rpc_string(RPC)
+
+        try:
+            df = stats.target_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.target_rpc_df.index.names.index('parent_rpc_id'), stats.target_rpc_df.index.names.index   ('rpc_id'), stats.target_rpc_df.index.names.index('received_from'), stats.target_rpc_df.index.names.index('address')])
+        except:
+            continue
+
+        for index, func in enumerate(functions_server):
+            """ For each step of this unique RPC, get the relevant values.
+            Note that there are multiple rows for this unique RPC due to the provider ID's
+            so we have to aggregate to reduce it to the RPC itself.
+            """
+
+            """ Aggregate by provider ID to find the variance of this RPC 
+                n_1 * (v_1 + d_1 ** 2) + n_2 * (v_2 + d_2 ** 2) 
+                / n_1 + n_2 where d_1 = u_1 - u  
+            """
+            vars = df[func]['duration']['var'].tolist()
+            nums = df[func]['duration']['num'].tolist()
+            means = df[func]['duration']['avg'].tolist()
+
+            # Use variance formula in terms of variances
+            rpc_mean = df[func]['duration']['sum'].sum() / df[func]['duration']['num'].sum()
+            d_squared = [(u - rpc_mean) ** 2 for u in means]
+            rpc_variance = sum([nums[index] * (vars[index] + d_squared[index]) for index in range(len(vars))]) / sum(nums)
+
+            # For later aggregation by RPC:
+            var_rpc[index].append(rpc_variance)
+            mean_rpc[index].append(rpc_mean)
+            num_rpc[index].append(df[func]['duration']['num'].sum())
+            sum_rpc[index].append(df[func]['duration']['sum'].sum()) # This is to find the rpc sum later on
+
+    if sum(num_rpc[0]) == 0:
+        return empty_bar_plot(title='No Data Available')
+
+    """ Now, find mean and var by aggregating all the RPC values """
+    for index, func in enumerate(functions_server):
+        all_rpc_mean = sum(sum_rpc[index]) / sum(num_rpc[index])
+        d_squared = [(u - all_rpc_mean) ** 2 for u in mean_rpc[index]]
+        all_rpc_variance = sum([num_rpc[index][j] * (var_rpc[index][j] + d_squared[j]) for j in range(len(num_rpc[index]))]) / sum(num_rpc[index])
+
+        mean_server[index] = all_rpc_mean
+        var_server[index] = all_rpc_variance
+    
+    std_server = [v ** 0.5 for v in var_server]
+
+    # Color for bars (can also be a colormap or hex list)
+    colors = ['#ff7f0e'] * len(functions_server)
+
+    # Create the base DataFrame
+    target_plot_df = pd.DataFrame({
+        'Function': functions_server,
+        'Mean Duration': mean_server,
+        'Std Dev': std_server,
+        'color': colors
+    }).sort_values(by='Mean Duration', ascending=False)
+
+    # Build the bar chart
+    bar_plot = target_plot_df.hvplot.bar(
+        x='Function',
+        y='Mean Duration',
+        title="Aggregated RPC Duration per Function (Mean ± Std Dev)",
+        rot=45,
+        color='color',
+        xlabel='Function',
+        ylabel='Mean Duration (s)',
+        height=500,
+        width=1000
+    )
+    
+    # Build the error bars using HoloViews
+    error_data = [(func, mean, std) for func, mean, std in zip(functions_server, mean_server, std_server)]
+    error_plot = hv.ErrorBars(error_data, kdims=['Function'], vdims=['Mean Duration', 'Std Dev'])
+
+    return (bar_plot * error_plot).opts(shared_axes=False, default_tools=["pan"])
+
+def create_graph_10(stats, rpc_id_dict, rpc_list):
+    functions_client = ['iforward', 'forward_cb', 'iforward_wait', 'set_input', 'get_output']
+    
+    mean_server = [None] * len(functions_client)
+    var_server = [None] * len(functions_client)
+
+    num_rpc = [[] for _ in range(len(functions_client))]
+    sum_rpc = [[] for _ in range(len(functions_client))]
+    mean_rpc = [[] for _ in range(len(functions_client))]
+    var_rpc = [[] for _ in range(len(functions_client))]
+
+    for src_address, dst_address, RPC in rpc_list:
+        src, dest = get_src_dst_from_rpc_string(RPC)
+
+        try:
+            df = stats.origin_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.origin_rpc_df.index.names.index('parent_rpc_id'), stats.origin_rpc_df.index.names.index('rpc_id'), stats.origin_rpc_df.index.names.index('address'), stats.origin_rpc_df.index.names.index('sent_to')])
+        except:
+            continue
+
+        for index, func in enumerate(functions_client):
+            """ For each step of this unique RPC, get the relevant values.
+            Note that there are multiple rows for this unique RPC due to the provider ID's
+            so we have to aggregate to reduce it to the RPC itself.
+            """
+
+            """ Aggregate by provider ID to find the variance of this RPC 
+                n_1 * (v_1 + d_1 ** 2) + n_2 * (v_2 + d_2 ** 2) 
+                / n_1 + n_2 where d_1 = u_1 - u  
+            """
+            vars = df[func]['duration']['var'].tolist()
+            nums = df[func]['duration']['num'].tolist()
+            means = df[func]['duration']['avg'].tolist()
+
+            # Use variance formula in terms of variances
+            rpc_mean = df[func]['duration']['sum'].sum() / df[func]['duration']['num'].sum()
+            d_squared = [(u - rpc_mean) ** 2 for u in means]
+            rpc_variance = sum([nums[index] * (vars[index] + d_squared[index]) for index in range(len(vars))]) / sum(nums)
+
+            # For later aggregation by RPC:
+            var_rpc[index].append(rpc_variance)
+            mean_rpc[index].append(rpc_mean)
+            num_rpc[index].append(df[func]['duration']['num'].sum())
+            sum_rpc[index].append(df[func]['duration']['sum'].sum()) # This is to find the rpc sum later on
+
+    if sum(num_rpc[0]) == 0:
+        return empty_bar_plot(title='No Data Available')
+
+    """ Now, find mean and var by aggregating all the RPC values """
+    for index, func in enumerate(functions_client):
+        all_rpc_mean = sum(sum_rpc[index]) / sum(num_rpc[index])
+        d_squared = [(u - all_rpc_mean) ** 2 for u in mean_rpc[index]]
+        all_rpc_variance = sum([num_rpc[index][j] * (var_rpc[index][j] + d_squared[j]) for j in range(len(num_rpc[index]))]) / sum(num_rpc[index])
+
+        mean_server[index] = all_rpc_mean
+        var_server[index] = all_rpc_variance
+    
+    std_server = [v ** 0.5 for v in var_server]
+
+    # Color for bars (can also be a colormap or hex list)
+    colors = ['#1f77b4'] * len(functions_client)
+
+    # Create the base DataFrame
+    origin_plot_df = pd.DataFrame({
+        'Function': functions_client,
+        'Mean Duration': mean_server,
+        'Std Dev': std_server,
+        'color': colors
+    }).sort_values(by='Mean Duration', ascending=False)
+
+    # Build the bar chart
+    bar_plot = origin_plot_df.hvplot.bar(
+        x='Function',
+        y='Mean Duration',
+        title="Aggregated RPC Duration per Function (Mean ± Std Dev)",
+        rot=45,
+        color='color',
+        xlabel='Function',
+        ylabel='Mean Duration (s)',
+        height=500,
+        width=1000
+    )
+
+    # Build the error bars using HoloViews
+    error_data = [(func, mean, std) for func, mean, std in zip(functions_client, mean_server, std_server)]
+    error_plot = hv.ErrorBars(error_data, kdims=['Function'], vdims=['Mean Duration', 'Std Dev'])
+
+    return (bar_plot * error_plot).opts(shared_axes=False, default_tools=["pan"])
+
 def create_per_rpc_svg_origin(stats, src, dest, src_files):
     if not src_files:
         return empty_bar_plot(title="No Data Available")
@@ -339,10 +510,7 @@ def create_rpc_load_heatmap(stats, rpc_id_dict, rpc_list, view_type='clients'):
 
     rpcs = []
     for src_address, dst_address, RPC in rpc_list:
-        if '➔' in RPC:
-            src, dest = RPC[:RPC.index('➔')-1], RPC[RPC.index('➔')+2:]
-        else:
-            src, dest = 'None', RPC
+        src, dest = get_src_dst_from_rpc_string(RPC)
 
         try:
             if view_type == 'clients':
@@ -447,12 +615,13 @@ def create_communication_graph(stats):
     # Combine
     return hv_graph * labels
 
+""" Plot Descriptions """
 def get_heatmap_description(view_type):
     if view_type == 'clients':
         return """Description: This heatmap visualizes how RPC load is distributed across different client processes. Each cell shows the number of RPC calls made by a specific client process for each RPC type, helping you identify which clients are the most active and which RPC types they use most frequently."""
     else: 
         return """Description: This heatmap visualizes how RPC load is distributed across different server processes. Each cell shows the number of RPC requests handled by a specific server process for each RPC type, helping you identify which servers are handling the most requests and which RPC types are most common."""
-
+    
 def get_graph_1_description():
     return """Description: This chart displays the total time each process spent making RPC calls to other processes. It shows the client-side perspective of RPC communication, revealing which processes are the most active clients."""
 
@@ -476,4 +645,4 @@ def get_graph_7_description():
     return """Description: This chart displays the top 5 RPCs (for the selected source, destination, and RPC) with the highest average call time on the client side. For each, it shows the maximum, average, and minimum call times, helping you identify which RPCs are the slowest from the client's perspective for the selected communication path."""
 
 def get_graph_8_description():
-    return """Description: This chart shows how much total time is spent in each step of the RPC process, for both clients and servers. Each bar represents a different stage, such as sending, waiting, or handling a request. By comparing these bars, you can quickly see which parts of the RPC workflow take the most time, and whether the delays are happening on the client side or the server side. This helps you spot where performance improvements will matter most."""
+    return """Each bar represents the total time spent in a specific step, summed across all selected RPCs. Compare the bars to see which steps are the most time-consuming. If you notice one step is much longer than the others, that's a good place to focus your optimization efforts."""
