@@ -37,7 +37,7 @@ def empty_bar_plot(
         height=height,
         width=width,
         color=color,
-    ).opts(shared_axes=False)
+    ).opts(default_tools=["pan"], shared_axes=False)
 
 """ Main Page Plots """
 def create_graph_1(stats):
@@ -166,7 +166,7 @@ def create_graph_6(stats, rpc_id_dict, rpc_list):
             title='Top 5 Server RPCs by Average Execution Time',
             xlabel='RPC Calls',
             ylabel='Execution Time (seconds)'
-        ).opts(shared_axes=False)
+        ).opts(default_tools=["pan"], shared_axes=False)
     else:
         return empty_bar_plot(title="No Data Available")
 
@@ -201,7 +201,7 @@ def create_graph_7(stats, rpc_id_dict, rpc_list):
             title='Top 5 Client RPCs by Average Call Time',
             xlabel='RPC Calls',
             ylabel='Call Time (seconds)'
-        ).opts(shared_axes=False)
+        ).opts(default_tools=["pan"], shared_axes=False)
     else:
         return empty_bar_plot(title="No Data Available")
 
