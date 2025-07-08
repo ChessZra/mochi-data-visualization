@@ -168,7 +168,7 @@ def create_graph_6(stats, rpc_id_dict, rpc_list):
             ylabel='Execution Time (seconds)'
         ).opts(default_tools=["pan"], shared_axes=False)
     else:
-        return empty_bar_plot(title="No Data Available")
+        raise ValueError("No data available: None of the selected RPCs were found in the server-side data. This may mean these RPCs were not executed on the server, were filtered out, or do not exist for your current selection.")
 
 def create_graph_7(stats, rpc_id_dict, rpc_list):
     rpcs = []
@@ -203,7 +203,7 @@ def create_graph_7(stats, rpc_id_dict, rpc_list):
             ylabel='Call Time (seconds)'
         ).opts(default_tools=["pan"], shared_axes=False)
     else:
-        return empty_bar_plot(title="No Data Available")
+        raise ValueError("No data available: None of the selected RPCs were found in the client-side data. This may mean these RPCs were not issued by the client, were filtered out, or do not exist for your current selection.")
 
 def create_graph_8(stats, rpc_id_dict, rpc_list):
 
@@ -245,7 +245,7 @@ def create_graph_8(stats, rpc_id_dict, rpc_list):
     elif sum(values_server):
         return target_plot_df.hvplot.bar(x='Function', y='Total Duration', title=title, rot=45, color='color', xlabel=x_label, ylabel=y_label, height=500, width=1000).opts(shared_axes=False, default_tools=["pan"]) 
     else:
-        return empty_bar_plot(title="No Data Available")
+        raise ValueError("No data available: None of the selected RPCs were found in either the server-side or client-side data. This may mean these RPCs were not executed, were filtered out, or do not exist for your current selection.")
 
 def create_graph_9(stats, rpc_id_dict, rpc_list):
     functions_server = ['handler', 'ult', 'irespond', 'respond_cb', 'irespond_wait', 'set_output', 'get_input']
@@ -281,6 +281,8 @@ def create_graph_9(stats, rpc_id_dict, rpc_list):
             means = df[func]['duration']['avg'].tolist()
 
             # Use variance formula in terms of variances
+            if df[func]['duration']['num'].sum() == 0:
+                continue
             rpc_mean = df[func]['duration']['sum'].sum() / df[func]['duration']['num'].sum()
             d_squared = [(u - rpc_mean) ** 2 for u in means]
             rpc_variance = sum([nums[index] * (vars[index] + d_squared[index]) for index in range(len(vars))]) / sum(nums)
@@ -292,13 +294,16 @@ def create_graph_9(stats, rpc_id_dict, rpc_list):
             sum_rpc[index].append(df[func]['duration']['sum'].sum()) # This is to find the rpc sum later on
 
     if sum(num_rpc[0]) == 0:
-        return empty_bar_plot(title='No Data Available')
+        raise ValueError('No data available: None of the selected RPCs were found in the server-side data for function breakdown. This may mean these RPCs were not executed on the server, were filtered out, or do not exist for your current selection.')
 
     """ Now, find mean and var by aggregating all the RPC values """
     for index, func in enumerate(functions_server):
-        all_rpc_mean = sum(sum_rpc[index]) / sum(num_rpc[index])
-        d_squared = [(u - all_rpc_mean) ** 2 for u in mean_rpc[index]]
-        all_rpc_variance = sum([num_rpc[index][j] * (var_rpc[index][j] + d_squared[j]) for j in range(len(num_rpc[index]))]) / sum(num_rpc[index])
+        if sum(num_rpc[index]) > 0:
+            all_rpc_mean = sum(sum_rpc[index]) / sum(num_rpc[index])
+            d_squared = [(u - all_rpc_mean) ** 2 for u in mean_rpc[index]]
+            all_rpc_variance = sum([num_rpc[index][j] * (var_rpc[index][j] + d_squared[j]) for j in range(len(num_rpc[index]))]) / sum(num_rpc[index])
+        else:
+            all_rpc_variance, all_rpc_mean = 0, 0 # No data point for this RPC step
 
         mean_server[index] = all_rpc_mean
         var_server[index] = all_rpc_variance
@@ -369,6 +374,8 @@ def create_graph_10(stats, rpc_id_dict, rpc_list):
             means = df[func]['duration']['avg'].tolist()
 
             # Use variance formula in terms of variances
+            if df[func]['duration']['num'].sum() == 0:
+                continue
             rpc_mean = df[func]['duration']['sum'].sum() / df[func]['duration']['num'].sum()
             d_squared = [(u - rpc_mean) ** 2 for u in means]
             rpc_variance = sum([nums[index] * (vars[index] + d_squared[index]) for index in range(len(vars))]) / sum(nums)
@@ -380,7 +387,7 @@ def create_graph_10(stats, rpc_id_dict, rpc_list):
             sum_rpc[index].append(df[func]['duration']['sum'].sum()) # This is to find the rpc sum later on
 
     if sum(num_rpc[0]) == 0:
-        return empty_bar_plot(title='No Data Available')
+        raise ValueError('No data available: None of the selected RPCs were found in the client-side data for function breakdown. This may mean these RPCs were not issued by the client, were filtered out, or do not exist for your current selection.')
 
     """ Now, find mean and var by aggregating all the RPC values """
     for index, func in enumerate(functions_client):
@@ -507,11 +514,9 @@ def create_per_rpc_svg_target(stats, src, dest, dest_files):
     return target_rpc_graph.to_ipython_svg()
 
 def create_rpc_load_heatmap(stats, rpc_id_dict, rpc_list, view_type='clients'):
-
     rpcs = []
     for src_address, dst_address, RPC in rpc_list:
         src, dest = get_src_dst_from_rpc_string(RPC)
-
         try:
             if view_type == 'clients':
                 df = stats.origin_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.origin_rpc_df.index.names.index('parent_rpc_id'), stats.origin_rpc_df.index.names.index('rpc_id'), stats.origin_rpc_df.index.names.index('address'), stats.origin_rpc_df.index.names.index('sent_to')])
@@ -521,12 +526,22 @@ def create_rpc_load_heatmap(stats, rpc_id_dict, rpc_list, view_type='clients'):
                 rpcs.append({'name': dest,'address': dst_address, 'num': df['handler']['duration']['num'].sum()})
         except:
             continue
-    
     if not rpcs: # Not found in any files
-        return empty_bar_plot(title="No Data Available")
-
+        raise ValueError(f"No data available: None of the selected RPCs were found in the {'client-side' if view_type == 'clients' else 'server-side'} data for the heatmap. This may mean these RPCs were not recorded, were filtered out, or do not exist for your current selection.")
+    
     df = pd.DataFrame(rpcs).set_index(['name', 'address']).groupby(['name', 'address']).sum()['num']        
-    heatmap = df.unstack(fill_value=0).hvplot.heatmap(
+    df_unstacked = df.unstack(fill_value=0)
+
+    # Sort rows (RPC types) by total activity descending
+    row_sums = df_unstacked.sum(axis=1)
+    df_unstacked = df_unstacked.loc[row_sums.sort_values(ascending=True).index]
+
+    # Sort columns (addresses) by total activity descending
+    col_sums = df_unstacked.sum(axis=0)
+    df_unstacked = df_unstacked.loc[:, col_sums.sort_values(ascending=False).index]
+
+    # Now plot  
+    heatmap = df_unstacked.hvplot.heatmap(
         title=f'RPC Load Distribution by {view_type.capitalize()}',
         xlabel=f'{wrap_label(view_type.capitalize())}',
         ylabel='RPC Type',  
@@ -536,8 +551,6 @@ def create_rpc_load_heatmap(stats, rpc_id_dict, rpc_list, view_type='clients'):
         height=500
     )    
     heatmap.opts(default_tools=['hover'])
-    # Tricky setting: the axes are synchronized by default
-    # this messes up with other plots!
     heatmap.opts(shared_axes=False, default_tools=["pan"]) 
     return heatmap
 
@@ -618,30 +631,60 @@ def create_communication_graph(stats):
 """ Plot Descriptions """
 def get_heatmap_description(view_type):
     if view_type == 'clients':
-        return """**What this shows:** This heatmap visualizes how RPC load is distributed across different client processes. Each cell shows the number of RPC calls made by a specific client process for each RPC type, helping you identify which clients are the most active and which RPC types they use most frequently."""
-    else: 
-        return """**What this shows:** This heatmap visualizes how RPC load is distributed across different server processes. Each cell shows the number of RPC requests handled by a specific server process for each RPC type, helping you identify which servers are handling the most requests and which RPC types are most common."""
-    
+        return (
+            "**What this shows:** This heatmap lets you quickly spot which client processes are making the most RPC calls and which types of RPCs they use most often. "
+            "Use this to find your busiest clients and see if the load is balanced."
+        )
+    else:
+        return (
+            "**What this shows:** This heatmap shows which server processes are handling the most RPC requests and which RPC types are most common. "
+            "Look for hotspots to find overloaded servers or popular RPCs."
+        )
+
 def get_graph_1_description():
-    return """**What this shows:** This chart displays the total time each process spent making RPC calls to other processes. It shows the client-side perspective of RPC communication, revealing which processes are the most active clients."""
+    return (
+        "**What this shows:** See which processes are the most active clients in your system. "
+        "Higher bars mean a process is making more RPC calls to others. Use this to spot your busiest clients."
+    )
 
 def get_graph_2_description():
-    return """**What this shows:** This chart shows the cumulative time each process spent executing RPC requests. The height of each bar represents the total execution time for that process, helping you identify which processes are doing the most computational work."""
+    return (
+        "**What this shows:** Find out which processes are doing the most work as servers. "
+        "Higher bars mean a process is handling more RPC requests. This helps you spot overloaded servers."
+    )
 
 def get_graph_3_description():
-    return """**What this shows:** This detailed view shows how much time the selected process spent calling each specific RPC type. It helps you understand the client-side behavior of a particular process."""
+    return (
+        "**What this shows:** For the selected process, see how much time it spends calling each type of RPC. "
+        "This helps you understand what kinds of work your client is doing most."
+    )
 
 def get_graph_4_description():
-    return """**What this shows:** This chart shows how much time the selected process spent executing each type of RPC request it received. It reveals the server-side workload distribution."""
+    return (
+        "**What this shows:** For the selected process, see how much time it spends handling each type of incoming RPC. "
+        "This reveals what kinds of requests your server is working on most."
+    )
 
 def get_graph_5_description():
-    return """**What this shows:** This chart displays the top 5 most resource-intensive Remote Procedure Calls (RPCs) in your system, ranked by the selected performance metric. It helps you quickly identify which RPC operations are consuming the most resources, whether that's server execution time, client call time, bulk transfer time, or data volume."""
+    return (
+        "**What this shows:** These are the top 5 RPCs using the most resources, based on your selected metric. "
+        "Use this to quickly find which RPCs are slowing things down or using the most bandwidth."
+    )
 
 def get_graph_6_description():
-    return """**What this shows:** This chart displays the top 5 RPCs (for the selected source, destination, and RPC) with the highest average execution time on the server side. For each, it shows the maximum, average, and minimum execution times, helping you identify which RPCs are the slowest to execute on the server for the selected communication path."""
+    return (
+        "**What this shows:** These are the top 5 server-side RPCs with the highest average execution time. "
+        "For each, you can see the max, average, and min times. Use this to find slow server operations to optimize."
+    )
 
 def get_graph_7_description():
-    return """**What this shows:** This chart displays the top 5 RPCs (for the selected source, destination, and RPC) with the highest average call time on the client side. For each, it shows the maximum, average, and minimum call times, helping you identify which RPCs are the slowest from the client's perspective for the selected communication path."""
+    return (
+        "**What this shows:** These are the top 5 client-side RPCs with the highest average call time. "
+        "For each, you can see the max, average, and min times. Use this to spot slow client operations or network delays."
+    )
 
 def get_graph_8_description():
-    return """**What this shows:** Each bar represents the total time spent in a specific step, summed across all selected RPCs. Compare the bars to see which steps are the most time-consuming. If you notice one step is much longer than the others, that's a good place to focus your optimization efforts."""
+    return (
+        "**What this shows:** See how much total time is spent in each step of the RPC process, across all selected RPCs. "
+        "Taller bars mean more time spent in that step. Focus on the tallest bars to find bottlenecks."
+    )

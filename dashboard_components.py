@@ -61,6 +61,7 @@ highlight_style = {
     'border-radius': '8px',
     'border-left': '4px solid #e74c3c',
     'font-size': '14px',
+    "max-width": "1000px",
     'color': '#2c3e50'
 }
 
@@ -71,6 +72,7 @@ tip_style = {
     'border-radius': '8px',
     'border-left': '4px solid #3498db',
     'font-size': '14px',
+    "max-width": "1000px",
     'color': '#2c3e50'
 }
 
@@ -154,16 +156,14 @@ class MochiDashboard():
             pn.Column(
                 create_graph_1(stats),
                 pn.pane.Markdown(
-                    "**What this shows:** Which processes are making the most RPC calls to other processes. "
-                    "Higher bars mean more client activity.",
+                    get_graph_1_description(),
                     styles=description_style
                 ),
             ),
             pn.Column(
                 create_graph_2(stats),
                 pn.pane.Markdown(
-                    "**What this shows:** Which processes are handling the most RPC requests. "
-                    "Higher bars mean more server workload.",
+                    get_graph_2_description(),
                     styles=description_style
                 ),
             ),
@@ -212,8 +212,7 @@ class MochiDashboard():
                     pn.pane.Markdown("**As a Client** (RPCs it calls)", styles=sub_section_style),
                     client_view,
                     pn.pane.Markdown(
-                        "Shows what RPC types this process calls most frequently. "
-                        "This reveals its role in the system.",
+                        get_graph_3_description(),
                         styles=description_style
                     ),
                 ),
@@ -221,8 +220,7 @@ class MochiDashboard():
                     pn.pane.Markdown("**As a Server** (RPCs it handles)", styles=sub_section_style),
                     server_view,
                     pn.pane.Markdown(
-                        "Shows what RPC types this process handles most often. "
-                        "This reveals its responsibilities.",
+                        get_graph_4_description(),
                         styles=description_style
                     ),
                 )
@@ -266,8 +264,7 @@ class MochiDashboard():
                 bars,
                 on_bar_click,
                 pn.pane.Markdown(
-                    f"**Showing:** Top 5 RPCs by {metric_choice.lower()}. "
-                    "Click any bar to explore detailed statistics for that specific RPC call.",
+                    get_graph_5_description() + " Click any bar to explore detailed statistics for that specific RPC call.",
                     styles=description_style
                 )
             )
@@ -438,6 +435,43 @@ class MochiDashboard():
         )
 
     def _create_detailed_per_rpc_layout(self, stats, rpc_list):
+
+        try:
+            graph_6_view = create_graph_6(stats, self.rpc_id_dict, rpc_list)
+        except Exception as e:
+            graph_6_view = pn.pane.Markdown(
+                f"{str(e)}",
+                styles=highlight_style
+            )
+        try:
+            graph_7_view = create_graph_7(stats, self.rpc_id_dict, rpc_list)
+        except Exception as e:
+            graph_7_view = pn.pane.Markdown(
+                f"{str(e)}",
+                styles=highlight_style
+            )
+        try:
+            graph_8_view = create_graph_8(stats, self.rpc_id_dict, rpc_list)
+        except Exception as e:
+            graph_8_view = pn.pane.Markdown(
+                f"{str(e)}",
+                styles=highlight_style
+            )
+        try:
+            graph_9_view = create_graph_9(stats, self.rpc_id_dict, rpc_list)
+        except Exception as e:
+            graph_9_view = pn.pane.Markdown(
+                f"{str(e)}",
+                styles=highlight_style
+            )
+        try:
+            graph_10_view = create_graph_10(stats, self.rpc_id_dict, rpc_list)
+        except Exception as e:
+            graph_10_view = pn.pane.Markdown(
+                f"{str(e)}",
+                styles=highlight_style
+            )
+
         """Create the detailed analysis layout with user-friendly explanations"""
         return pn.Column(
             pn.pane.Markdown("## Detailed Performance Analysis", styles=section_style),
@@ -452,14 +486,14 @@ class MochiDashboard():
                 styles=description_style
             ),     
             pn.Column(
-                create_graph_6(stats, self.rpc_id_dict, rpc_list),
+                graph_6_view,
                 pn.pane.Markdown(
                     get_graph_6_description(),
                     styles=description_style
                 ),
             ),
             pn.Column(
-                create_graph_7(stats, self.rpc_id_dict, rpc_list),
+                graph_7_view,
                 pn.pane.Markdown(
                     get_graph_7_description(),
                     styles=description_style
@@ -508,7 +542,7 @@ class MochiDashboard():
                 "**Legend:** <span style='color:#1f77b4'>🔵 Client steps</span> &nbsp;&nbsp; <span style='color:#ff7f0e'>🟠 Server steps</span>", 
                 styles=description_style
             ),
-            create_graph_8(stats, self.rpc_id_dict, rpc_list),
+            graph_8_view,
             pn.pane.Markdown(
                 get_graph_8_description(),
                 styles=description_style
@@ -520,8 +554,8 @@ class MochiDashboard():
                 "High variability (large error bars) might indicate issues that need attention.",
                 styles=description_style
             ),
-            create_graph_9(stats, self.rpc_id_dict, rpc_list),
-            create_graph_10(stats, self.rpc_id_dict, rpc_list),
+            graph_9_view,
+            graph_10_view,
             
             pn.pane.Markdown(
                 "**Analysis Tips:** Look for patterns in the data. Are certain steps consistently slow? "
@@ -533,18 +567,24 @@ class MochiDashboard():
    
     def _create_distribution_view(self, stats, rpc_list):
         """Create distribution view with user-friendly explanations"""
+        try:
+            client_heatmap = create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, 'clients')
+        except Exception as e:
+            client_heatmap = pn.pane.Markdown(f"{str(e)}", styles=highlight_style)
+        try:
+            server_heatmap = create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, 'servers')
+        except Exception as e:
+            server_heatmap = pn.pane.Markdown(f"{str(e)}", styles=highlight_style)
         return pn.Column(
-            
             pn.Column(
                 pn.pane.Markdown("### Who's Sending the Most Requests?", styles=sub_section_style),
                 pn.pane.Markdown(
                     "This heatmap shows which client processes are making the most RPC calls.",
                     styles=description_style
                 ),
-                create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, 'clients'),
+                client_heatmap,
                 pn.pane.Markdown(
-                    "**Client distribution:** Shows which client processes are making the most calls. "
-                    "Helps identify load balancing issues.",
+                    get_heatmap_description(view_type='clients'),
                     styles=description_style
                 ),
             ),
@@ -554,10 +594,9 @@ class MochiDashboard():
                     "This heatmap shows which server processes are handling the most RPC requests. Look for potential overloaded servers.",
                     styles=description_style
                 ),
-                create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, 'servers'),
+                server_heatmap,
                 pn.pane.Markdown(
-                    "**Server distribution:** Shows which server processes are handling the most requests. "
-                    "Helps identify potential bottlenecks.",
+                    get_heatmap_description(view_type='servers'),
                     styles=description_style
                 ),
             )
