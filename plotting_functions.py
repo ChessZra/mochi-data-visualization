@@ -331,7 +331,8 @@ def create_graph_9(stats, rpc_id_dict, rpc_list):
         xlabel='Function',
         ylabel='Mean Duration (s)',
         height=500,
-        width=1000
+        width=1000,
+        hover_cols=['Std Dev']
     )
     
     # Build the error bars using HoloViews
@@ -421,7 +422,8 @@ def create_graph_10(stats, rpc_id_dict, rpc_list):
         xlabel='Function',
         ylabel='Mean Duration (s)',
         height=500,
-        width=1000
+        width=1000,
+        hover_cols=['Std Dev']
     )
 
     # Build the error bars using HoloViews
