@@ -588,7 +588,7 @@ class MochiDashboard():
                 styles=DESCRIPTION_STYLE,
             ),
             pn.pane.Markdown(
-                "Let's also zoom in and start by looking at the performance of your selected RPCs in the client side. Which RPCs are taking the most time on the request?",
+                "Now, let's zoom in to the RPCs and look at the performance of your selected RPCs in the client side. Which RPCs are taking the most time on the request?",
                 styles=DESCRIPTION_STYLE
             ),     
             pn.Column(

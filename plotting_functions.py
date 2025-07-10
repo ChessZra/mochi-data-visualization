@@ -151,7 +151,7 @@ def get_mean_variance_from_rpcs_server(stats, rpc_id_dict, rpc_list, functions, 
             sum_rpc[index].append(df[func][aggregations[index]]['sum'].sum()) # This is to find the rpc sum later on
 
     if sum(num_rpc[0]) == 0:
-        raise ValueError('No data available: None of the selected RPCs were found in the client-side data for function breakdown. This may mean these RPCs were not issued by the client, were filtered out, or do not exist for your current selection.')
+        raise ValueError("No data available: None of the selected RPCs were found in the server-side data. This may mean these RPCs were not executed on the server, were filtered out, or do not exist for your current selection.")
 
     """ Now, find mean and var by aggregating all the RPC values """
     for index, func in enumerate(functions):
@@ -357,7 +357,7 @@ def create_graph_6(stats, rpc_id_dict, rpc_list):
         call_count = df['handler']['duration']['num'].sum()
         time_avg = time_sum / call_count
 
-        rpcs_index.append(f'{src} \n➔ {dest}\n{dst_address}')
+        rpcs_index.append(f'{src} \n➔ {dest}\n<{dst_address}>' if src != 'None' else f'{dest}\n<{dst_address}>')
         rpcs.append({'sum': time_sum, 'max': time_max, 'avg': time_avg, 'min': time_min, 'num': call_count})
     
     if rpcs:
@@ -393,7 +393,7 @@ def create_graph_7(stats, rpc_id_dict, rpc_list):
         call_count = df['iforward']['duration']['num'].sum()
         time_avg = time_sum / call_count
 
-        rpcs_index.append(f'{src} \n➔ {dest}\n{src_address}')
+        rpcs_index.append(f'{src} \n➔ {dest}\n<{src_address}>' if src != 'None' else f'{dest}\n<{src_address}>')
         rpcs.append({'sum': time_sum, 'max': time_max, 'avg': time_avg, 'min': time_min, 'num': call_count})
 
     if rpcs:
