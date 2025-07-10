@@ -101,6 +101,7 @@ class MochiDashboard():
             self._create_overview_section(stats),
             self._create_process_analysis_section(stats),
             self._create_detailed_analysis_section(stats),
+            self._create_advanced_analysis_section(stats),
             styles={'max-width': '1200px', 'margin': '0 auto'}
         )
         
@@ -108,11 +109,15 @@ class MochiDashboard():
         self.trigger = pn.widgets.TextInput(name='Page Toggle', value='', visible=False)
         @pn.depends(self.trigger)
         def get_page(context):
-            print("get_page() called with context:", context)
             if not context or context == 'back_to_main_page':
+                print("Attempting to display main_page")
                 return main_page
+            elif context == 'per_rpc_analysis':
+                print("Attempting to display PER-RPC page")
+                return self._create_per_rpc_view(stats)
             else:
-                return self._create_per_rpc_view(context, stats)
+                print("Attempting to display PER-RPC page")
+                return self._create_per_rpc_view(stats)
         
         template = pn.template.MaterialTemplate(
             title="Mochi Performance Dashboard", 
@@ -238,7 +243,6 @@ class MochiDashboard():
         )
 
     def _create_detailed_analysis_section(self, stats):
-        """Create the RPC analysis section with clear call-to-action"""
         metric_dropdown = pn.widgets.Select(
             name='Performance Metric', 
             options=['Server Execution Time', 'Client Call Time', 'Bulk Transfer Time', 'RDMA Data Transfer Size'], 
@@ -270,8 +274,8 @@ class MochiDashboard():
         return pn.Column(
             pn.pane.Markdown("## RPC Performance Analysis", styles=SECTION_STYLE),
             pn.pane.Markdown(
-                "Ready to dive deeper? This section shows you the most resource-intensive RPC calls in your system. "
-                "Choose a metric to focus on, then click any bar to see detailed breakdowns.",
+                "Here you can see which RPC calls are using the most resources in your system. "
+                "Pick a metric (like execution time or transfer size) to see which operations are the most demanding.",
                 styles=DESCRIPTION_STYLE
             ),
                 pn.Row(metric_dropdown),
@@ -285,7 +289,44 @@ class MochiDashboard():
             width=MAIN_PAGE_WIDTH
         )
 
-    def _create_per_rpc_view(self, context, stats):
+    def _create_advanced_analysis_section(self, stats):
+        """Create a section with a button to access the PER-RPC analysis page"""
+        per_rpc_button = pn.widgets.Button(
+            name='Advanced PER-RPC Analysis', 
+            button_type='primary',
+            width=300,
+            height=50
+        )
+        
+        def on_per_rpc_button_click(event):
+            self.trigger.value = 'per_rpc_analysis'
+        
+        per_rpc_button.on_click(on_per_rpc_button_click)
+        
+        return pn.Column(
+            pn.pane.Markdown(
+                "Ready to dive deeper? This advanced analysis lets you investigate specific RPC calls in detail.",
+                styles=DESCRIPTION_STYLE
+            ),
+            pn.pane.Markdown(
+                "• **Pick specific processes** and see how they communicate\n"
+                "• **Choose individual RPC calls** to analyze their performance step-by-step\n"
+                "• **Find bottlenecks** by looking at timing breakdowns\n"
+                "• **Spot performance issues** by analyzing how consistent the timing is",
+                styles=DESCRIPTION_STYLE
+            ),
+            pn.Row(
+                per_rpc_button,
+                pn.pane.Markdown(
+                    "**When to use this:** When you've found a specific process or RPC call that seems problematic and want to understand why",
+                    styles=TIP_STYLE
+                )
+            ),
+            styles=BORDER_STYLE,
+            width=MAIN_PAGE_WIDTH
+        )
+
+    def _create_per_rpc_view(self, stats):
         """Create the detailed RPC view with improved user guidance"""
         # Define components
         all_options = get_all_addresses(stats)
