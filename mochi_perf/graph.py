@@ -59,6 +59,28 @@ class RPCGraph:
         context.rectangle(x, y, width, height)
         context.stroke()
 
+    def draw_dotted_line(self, context: cairo.Context, start_x: float, start_y: float, end_x: float, end_y: float):
+        context.set_source_rgb(0.3, 0.3, 0.3) 
+        context.set_line_width(0.003)
+        
+        context.set_dash([0.01, 0.005])  
+        
+        context.move_to(start_x, start_y)
+        context.line_to(end_x, end_y)
+        context.stroke()
+        
+        context.set_dash([])
+
+    def draw_label(self, context: cairo.Context, x: float, y: float, text: str):
+        context.set_source_rgb(0, 0, 0)  
+        context.select_font_face("Arial", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        context.set_font_size(0.04) 
+        
+        text_extents = context.text_extents(text)
+    
+        context.move_to(x, y + text_extents.height / 2)
+        context.show_text(text)
+
     def to_ipython_svg(self):
         import IPython
         return IPython.display.SVG(data=self.svgio.getvalue())
@@ -72,9 +94,9 @@ class OriginRPCGraph(RPCGraph):
                  forward_cb: Mapping[str, float],
                  get_output: Optional[Mapping[str, float]] = None):
         self.svgio = BytesIO()
-        with cairo.SVGSurface(self.svgio, 240, 380) as surface:
+        with cairo.SVGSurface(self.svgio, 320, 380) as surface:
             context = cairo.Context(surface)
-            context.scale(240, 380)
+            context.scale(320, 380)
             # vertical arrows
             self.draw_arrow(context, 0.6)
             self.draw_arrow(context, 0.8)
@@ -85,19 +107,27 @@ class OriginRPCGraph(RPCGraph):
             context.set_line_width(0.015)
             context.stroke()
             # iforward, set_input, wait, get_output blocks
-            for block, color in zip(
-                [iforward, set_input, wait, get_output],
-                [Colors.purple,  Colors.blue,  Colors.red,  Colors.green]):
+            blocks = [(iforward, 'iforward'), (set_input, 'set_input'), (wait, 'iforward_wait'), (get_output, 'get_output')]
+            colors = [Colors.purple, Colors.blue, Colors.red, Colors.green]
+            legend_y = 0.1
+            for i, ((block, label), color) in enumerate(zip(blocks, colors)):
                 if block is None: continue
                 self.draw_block(context, 0.52,
                                 block['start']*0.9, 0.16,
                                 block['duration']*0.9,
                                 color['light'], color['dark'])
+                # Draw legend
+                self.draw_label(context, 0.02, legend_y, label)
+                self.draw_dotted_line(context, 0.2, legend_y, 0.52, block['start']*0.9)
+                legend_y += 0.08
             # forward_cb block
             self.draw_block(context, 0.72,
                             forward_cb['start']*0.9, 0.16,
                             forward_cb['duration']*0.9,
                             Colors.yellow['light'], Colors.yellow['dark'])
+            # forward_cb legend
+            self.draw_label(context, 0.02, legend_y, 'forward_cb')
+            self.draw_dotted_line(context, 0.2, legend_y, 0.72, forward_cb['start']*0.9)
 
 
 class TargetRPCGraph(RPCGraph):
@@ -110,29 +140,44 @@ class TargetRPCGraph(RPCGraph):
                  wait: Optional[Mapping[str, float]] = None,
                  respond_cb: Optional[Mapping[str, float]] = None):
         self.svgio = BytesIO()
-        with cairo.SVGSurface(self.svgio, 240, 380) as surface:
+        with cairo.SVGSurface(self.svgio, 320, 380) as surface:
             context = cairo.Context(surface)
-            context.scale(240, 380)
+            context.scale(320, 380)
             # vertical arrows
             self.draw_arrow(context, 0.6)
             self.draw_arrow(context, 0.8)
-            # iforward, set_input, wait, get_output blocks
-            for block, color in zip(
-                [ult, get_input, irespond, set_output, wait],
-                [Colors.grey,  Colors.blue,  Colors.purple,  Colors.green, Colors.red]):
-                if block is None: continue
-                self.draw_block(context, 0.52,
-                                block['start']*0.9, 0.16,
-                                block['duration']*0.9,
-                                color['light'], color['dark'])
+            # left column blocks
+            legend_y = 0.1
+
             # handler block
             self.draw_block(context, 0.72,
                             handler['start']*0.9, 0.16,
                             handler['duration']*0.9,
                             Colors.yellow['light'], Colors.yellow['dark'])
+            # handler legend
+            self.draw_label(context, 0.02, legend_y, 'handler')
+            self.draw_dotted_line(context, 0.2, legend_y, 0.72, handler['start']*0.9)
+            legend_y += 0.08
+
+            blocks = [(ult, 'ult'), (get_input, 'get_input'), (irespond, 'irespond'), (set_output, 'set_output'), (wait, 'irespond_wait')]
+            colors = [Colors.grey, Colors.blue, Colors.purple, Colors.green, Colors.red]
+            for (block, label), color in zip(blocks, colors):
+                if block is None: continue
+                self.draw_block(context, 0.52,
+                                block['start']*0.9, 0.16,
+                                block['duration']*0.9,
+                                color['light'], color['dark'])
+                # Draw legend
+                self.draw_label(context, 0.02, legend_y, label)
+                self.draw_dotted_line(context, 0.2, legend_y, 0.52, block['start']*0.9)
+                legend_y += 0.08
+
             # respond_cb block
             if respond_cb is not None:
                 self.draw_block(context, 0.72,
                                 respond_cb['start']*0.9, 0.16,
                                 respond_cb['duration']*0.9,
                                 Colors.yellow['light'], Colors.yellow['dark'])
+                # respond_cb legend
+                self.draw_label(context, 0.02, legend_y, 'respond_cb')
+                self.draw_dotted_line(context, 0.2, legend_y, 0.72, respond_cb['start']*0.9)

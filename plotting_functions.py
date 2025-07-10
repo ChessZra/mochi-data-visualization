@@ -32,6 +32,138 @@ def get_all_addresses(stats):
     address4 = stats.target_rpc_df.index.get_level_values('received_from')
     return sorted(address1.union(address2).union(address3).union(address4).unique().to_list())
 
+""" 
+Returns a tuple:
+    (
+        mean_client: list[float], the aggregated mean of all RPCs provided in <rpc_list> in each RPC step
+        var_client: list[float], the aggregated variance of all RPCs provided in <rpc_list> in each RPC step
+    )
+"""
+def get_mean_variance_from_rpcs_client(stats, rpc_id_dict, rpc_list, functions, aggregations):
+
+    mean_client = [None] * len(functions)
+    var_client = [None] * len(functions)
+
+    num_rpc = [[] for _ in range(len(functions))]
+    sum_rpc = [[] for _ in range(len(functions))]
+    mean_rpc = [[] for _ in range(len(functions))]
+    var_rpc = [[] for _ in range(len(functions))]
+
+    for src_address, dst_address, RPC in rpc_list:
+        src, dest = get_src_dst_from_rpc_string(RPC)
+
+        try:
+            df = stats.origin_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.origin_rpc_df.index.names.index('parent_rpc_id'), stats.origin_rpc_df.index.names.index('rpc_id'), stats.origin_rpc_df.index.names.index('address'), stats.origin_rpc_df.index.names.index('sent_to')])
+        except:
+            continue
+
+        for index, func in enumerate(functions):
+            """ For each step of this unique RPC, get the relevant values.
+            Note that there are multiple rows for this unique RPC due to the provider ID's
+            so we have to aggregate to reduce it to the RPC itself.
+            """
+
+            """ Aggregate by provider ID to find the variance of this RPC 
+                n_1 * (v_1 + d_1 ** 2) + n_2 * (v_2 + d_2 ** 2) 
+                / n_1 + n_2 where d_1 = u_1 - u  
+            """
+            vars = df[func][aggregations[index]]['var'].tolist()
+            nums = df[func][aggregations[index]]['num'].tolist()
+            means = df[func][aggregations[index]]['avg'].tolist()
+
+            # Use variance formula in terms of variances
+            if df[func][aggregations[index]]['num'].sum() == 0:
+                continue
+            rpc_mean = df[func][aggregations[index]]['sum'].sum() / df[func][aggregations[index]]['num'].sum()
+            d_squared = [(u - rpc_mean) ** 2 for u in means]
+            rpc_variance = sum([nums[index] * (vars[index] + d_squared[index]) for index in range(len(vars))]) / sum(nums)
+
+            # For later aggregation by RPC:
+            var_rpc[index].append(rpc_variance)
+            mean_rpc[index].append(rpc_mean)
+            num_rpc[index].append(df[func][aggregations[index]]['num'].sum())
+            sum_rpc[index].append(df[func][aggregations[index]]['sum'].sum()) # This is to find the rpc sum later on
+
+    if sum(num_rpc[0]) == 0:
+        raise ValueError('No data available: None of the selected RPCs were found in the client-side data for function breakdown. This may mean these RPCs were not issued by the client, were filtered out, or do not exist for your current selection.')
+
+    """ Now, find mean and var by aggregating all the RPC values """
+    for index, func in enumerate(functions):
+        all_rpc_mean = sum(sum_rpc[index]) / sum(num_rpc[index])
+        d_squared = [(u - all_rpc_mean) ** 2 for u in mean_rpc[index]]
+        all_rpc_variance = sum([num_rpc[index][j] * (var_rpc[index][j] + d_squared[j]) for j in range(len(num_rpc[index]))]) / sum(num_rpc[index])
+
+        mean_client[index] = all_rpc_mean
+        var_client[index] = all_rpc_variance
+
+    return mean_client, var_client
+
+""" 
+Returns a tuple:
+    (
+        mean_server: list[float], the aggregated mean of all RPCs provided in <rpc_list> in each RPC step
+        var_server: list[float], the aggregated variance of all RPCs provided in <rpc_list> in each RPC step
+    )
+"""
+def get_mean_variance_from_rpcs_server(stats, rpc_id_dict, rpc_list, functions, aggregations):
+
+    mean_server = [None] * len(functions)
+    var_server = [None] * len(functions)
+
+    num_rpc = [[] for _ in range(len(functions))]
+    sum_rpc = [[] for _ in range(len(functions))]
+    mean_rpc = [[] for _ in range(len(functions))]
+    var_rpc = [[] for _ in range(len(functions))]
+
+    for src_address, dst_address, RPC in rpc_list:
+        src, dest = get_src_dst_from_rpc_string(RPC)
+
+        try:
+            df = stats.target_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.target_rpc_df.index.names.index('parent_rpc_id'), stats.target_rpc_df.index.names.index   ('rpc_id'), stats.target_rpc_df.index.names.index('received_from'), stats.target_rpc_df.index.names.index('address')])
+        except:
+            continue
+
+        for index, func in enumerate(functions):
+            """ For each step of this unique RPC, get the relevant values.
+            Note that there are multiple rows for this unique RPC due to the provider ID's
+            so we have to aggregate to reduce it to the RPC itself.
+            """
+
+            """ Aggregate by provider ID to find the variance of this RPC 
+                n_1 * (v_1 + d_1 ** 2) + n_2 * (v_2 + d_2 ** 2) 
+                / n_1 + n_2 where d_1 = u_1 - u  
+            """
+            vars = df[func][aggregations[index]]['var'].tolist()
+            nums = df[func][aggregations[index]]['num'].tolist()
+            means = df[func][aggregations[index]]['avg'].tolist()
+
+            # Use variance formula in terms of variances
+            if df[func][aggregations[index]]['num'].sum() == 0:
+                continue
+            rpc_mean = df[func][aggregations[index]]['sum'].sum() / df[func][aggregations[index]]['num'].sum()
+            d_squared = [(u - rpc_mean) ** 2 for u in means]
+            rpc_variance = sum([nums[index] * (vars[index] + d_squared[index]) for index in range(len(vars))]) / sum(nums)
+
+            # For later aggregation by RPC:
+            var_rpc[index].append(rpc_variance)
+            mean_rpc[index].append(rpc_mean)
+            num_rpc[index].append(df[func][aggregations[index]]['num'].sum())
+            sum_rpc[index].append(df[func][aggregations[index]]['sum'].sum()) # This is to find the rpc sum later on
+
+    if sum(num_rpc[0]) == 0:
+        raise ValueError('No data available: None of the selected RPCs were found in the client-side data for function breakdown. This may mean these RPCs were not issued by the client, were filtered out, or do not exist for your current selection.')
+
+    """ Now, find mean and var by aggregating all the RPC values """
+    for index, func in enumerate(functions):
+        all_rpc_mean = sum(sum_rpc[index]) / sum(num_rpc[index])
+        d_squared = [(u - all_rpc_mean) ** 2 for u in mean_rpc[index]]
+        all_rpc_variance = sum([num_rpc[index][j] * (var_rpc[index][j] + d_squared[j]) for j in range(len(num_rpc[index]))]) / sum(num_rpc[index])
+
+        mean_server[index] = all_rpc_mean
+        var_server[index] = all_rpc_variance
+
+    return mean_server, var_server
+
 """ Main Page Plots """
 @debug_time
 def create_graph_1(stats):
@@ -321,66 +453,14 @@ def create_graph_8(stats, rpc_id_dict, rpc_list):
 
 @debug_time
 def create_graph_9(stats, rpc_id_dict, rpc_list):
+
     functions_server = ['handler', 'ult', 'irespond', 'respond_cb', 'irespond_wait', 'set_output', 'get_input']
-    
-    mean_server = [None] * len(functions_server)
-    var_server = [None] * len(functions_server)
+    aggregations = ['duration', 'duration', 'duration', 'duration', 'duration', 'duration', 'duration']
+    try:
+        mean_server, var_server = get_mean_variance_from_rpcs_server(stats, rpc_id_dict, rpc_list, functions_server, aggregations)
+    except ValueError as e:
+        raise ValueError(str(e))  # throw it again, loud and proud
 
-    num_rpc = [[] for _ in range(len(functions_server))]
-    sum_rpc = [[] for _ in range(len(functions_server))]
-    mean_rpc = [[] for _ in range(len(functions_server))]
-    var_rpc = [[] for _ in range(len(functions_server))]
-
-    for src_address, dst_address, RPC in rpc_list:
-        src, dest = get_src_dst_from_rpc_string(RPC)
-
-        try:
-            df = stats.target_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.target_rpc_df.index.names.index('parent_rpc_id'), stats.target_rpc_df.index.names.index   ('rpc_id'), stats.target_rpc_df.index.names.index('received_from'), stats.target_rpc_df.index.names.index('address')])
-        except:
-            continue
-
-        for index, func in enumerate(functions_server):
-            """ For each step of this unique RPC, get the relevant values.
-            Note that there are multiple rows for this unique RPC due to the provider ID's
-            so we have to aggregate to reduce it to the RPC itself.
-            """
-
-            """ Aggregate by provider ID to find the variance of this RPC 
-                n_1 * (v_1 + d_1 ** 2) + n_2 * (v_2 + d_2 ** 2) 
-                / n_1 + n_2 where d_1 = u_1 - u  
-            """
-            vars = df[func]['duration']['var'].tolist()
-            nums = df[func]['duration']['num'].tolist()
-            means = df[func]['duration']['avg'].tolist()
-
-            # Use variance formula in terms of variances
-            if df[func]['duration']['num'].sum() == 0:
-                continue
-            rpc_mean = df[func]['duration']['sum'].sum() / df[func]['duration']['num'].sum()
-            d_squared = [(u - rpc_mean) ** 2 for u in means]
-            rpc_variance = sum([nums[index] * (vars[index] + d_squared[index]) for index in range(len(vars))]) / sum(nums)
-
-            # For later aggregation by RPC:
-            var_rpc[index].append(rpc_variance)
-            mean_rpc[index].append(rpc_mean)
-            num_rpc[index].append(df[func]['duration']['num'].sum())
-            sum_rpc[index].append(df[func]['duration']['sum'].sum()) # This is to find the rpc sum later on
-
-    if sum(num_rpc[0]) == 0:
-        raise ValueError('No data available: None of the selected RPCs were found in the server-side data for function breakdown. This may mean these RPCs were not executed on the server, were filtered out, or do not exist for your current selection.')
-
-    """ Now, find mean and var by aggregating all the RPC values """
-    for index, func in enumerate(functions_server):
-        if sum(num_rpc[index]) > 0:
-            all_rpc_mean = sum(sum_rpc[index]) / sum(num_rpc[index])
-            d_squared = [(u - all_rpc_mean) ** 2 for u in mean_rpc[index]]
-            all_rpc_variance = sum([num_rpc[index][j] * (var_rpc[index][j] + d_squared[j]) for j in range(len(num_rpc[index]))]) / sum(num_rpc[index])
-        else:
-            all_rpc_variance, all_rpc_mean = 0, 0 # No data point for this RPC step
-
-        mean_server[index] = all_rpc_mean
-        var_server[index] = all_rpc_variance
-    
     std_server = [v ** 0.5 for v in var_server]
 
     # Color for bars (can also be a colormap or hex list)
@@ -416,72 +496,23 @@ def create_graph_9(stats, rpc_id_dict, rpc_list):
 
 @debug_time
 def create_graph_10(stats, rpc_id_dict, rpc_list):
+
     functions_client = ['iforward', 'forward_cb', 'iforward_wait', 'set_input', 'get_output']
+    aggregations = ['duration', 'duration', 'duration', 'duration', 'duration']
+    try:
+        mean_client, var_client = get_mean_variance_from_rpcs_client(stats, rpc_id_dict, rpc_list, functions_client, aggregations)
+    except ValueError as e:
+        raise ValueError(str(e))  # throw it again, loud and proud
     
-    mean_server = [None] * len(functions_client)
-    var_server = [None] * len(functions_client)
+    std_server = [v ** 0.5 for v in var_client]
 
-    num_rpc = [[] for _ in range(len(functions_client))]
-    sum_rpc = [[] for _ in range(len(functions_client))]
-    mean_rpc = [[] for _ in range(len(functions_client))]
-    var_rpc = [[] for _ in range(len(functions_client))]
-
-    for src_address, dst_address, RPC in rpc_list:
-        src, dest = get_src_dst_from_rpc_string(RPC)
-
-        try:
-            df = stats.origin_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.origin_rpc_df.index.names.index('parent_rpc_id'), stats.origin_rpc_df.index.names.index('rpc_id'), stats.origin_rpc_df.index.names.index('address'), stats.origin_rpc_df.index.names.index('sent_to')])
-        except:
-            continue
-
-        for index, func in enumerate(functions_client):
-            """ For each step of this unique RPC, get the relevant values.
-            Note that there are multiple rows for this unique RPC due to the provider ID's
-            so we have to aggregate to reduce it to the RPC itself.
-            """
-
-            """ Aggregate by provider ID to find the variance of this RPC 
-                n_1 * (v_1 + d_1 ** 2) + n_2 * (v_2 + d_2 ** 2) 
-                / n_1 + n_2 where d_1 = u_1 - u  
-            """
-            vars = df[func]['duration']['var'].tolist()
-            nums = df[func]['duration']['num'].tolist()
-            means = df[func]['duration']['avg'].tolist()
-
-            # Use variance formula in terms of variances
-            if df[func]['duration']['num'].sum() == 0:
-                continue
-            rpc_mean = df[func]['duration']['sum'].sum() / df[func]['duration']['num'].sum()
-            d_squared = [(u - rpc_mean) ** 2 for u in means]
-            rpc_variance = sum([nums[index] * (vars[index] + d_squared[index]) for index in range(len(vars))]) / sum(nums)
-
-            # For later aggregation by RPC:
-            var_rpc[index].append(rpc_variance)
-            mean_rpc[index].append(rpc_mean)
-            num_rpc[index].append(df[func]['duration']['num'].sum())
-            sum_rpc[index].append(df[func]['duration']['sum'].sum()) # This is to find the rpc sum later on
-
-    if sum(num_rpc[0]) == 0:
-        raise ValueError('No data available: None of the selected RPCs were found in the client-side data for function breakdown. This may mean these RPCs were not issued by the client, were filtered out, or do not exist for your current selection.')
-
-    """ Now, find mean and var by aggregating all the RPC values """
-    for index, func in enumerate(functions_client):
-        all_rpc_mean = sum(sum_rpc[index]) / sum(num_rpc[index])
-        d_squared = [(u - all_rpc_mean) ** 2 for u in mean_rpc[index]]
-        all_rpc_variance = sum([num_rpc[index][j] * (var_rpc[index][j] + d_squared[j]) for j in range(len(num_rpc[index]))]) / sum(num_rpc[index])
-
-        mean_server[index] = all_rpc_mean
-        var_server[index] = all_rpc_variance
-    
-    std_server = [v ** 0.5 for v in var_server]
-
-    # Color for bars (can also be a colormap or hex list)
+    # Color for bars 
     colors = ['#1f77b4'] * len(functions_client)
 
     # Create the base DataFrame
     origin_plot_df = pd.DataFrame({
         'Function': functions_client,
-        'Mean Duration': mean_server,
+        'Mean Duration': mean_client,
         'Std Dev': std_server,
         'color': colors
     }).sort_values(by='Mean Duration', ascending=False)
@@ -501,7 +532,7 @@ def create_graph_10(stats, rpc_id_dict, rpc_list):
     )
 
     # Build the error bars using HoloViews
-    error_data = [(func, mean, std) for func, mean, std in zip(functions_client, mean_server, std_server)]
+    error_data = [(func, mean, std) for func, mean, std in zip(functions_client, mean_client, std_server)]
     error_plot = hv.ErrorBars(error_data, kdims=['Function'], vdims=['Mean Duration', 'Std Dev'])
 
     return (bar_plot * error_plot).opts(shared_axes=False, default_tools=["pan"])
@@ -547,6 +578,110 @@ def create_rpc_load_heatmap(stats, rpc_id_dict, rpc_list, view_type='clients'):
     heatmap.opts(default_tools=['hover'])
     heatmap.opts(shared_axes=False, default_tools=["pan"]) 
     return heatmap
+
+@debug_time
+def create_per_rpc_svg_origin(stats, rpc_id_dict, rpc_list):
+    # Get mean and variance
+    functions = ['iforward', 'forward_cb', 'iforward_wait', 'set_input', 'get_output']
+    aggregations = ['duration', 'duration', 'duration', 'duration', 'duration']
+    means, vars = get_mean_variance_from_rpcs_client(stats, rpc_id_dict, rpc_list, functions, aggregations)
+
+    iforward_duration = means[0]
+    forward_cb_duration = means[1]
+    wait_duration = means[2]
+    set_input_duration = means[3]
+    get_output_duration = means[4]
+
+    functions = ['iforward', 'set_input', 'iforward_wait', 'forward_cb', 'get_output']
+    aggregations = ['relative_timestamp_from_create', 'relative_timestamp_from_iforward_start', 'relative_timestamp_from_iforward_end', 'relative_timestamp_from_iforward_start', 'relative_timestamp_from_wait_end']
+    means, vars = get_mean_variance_from_rpcs_client(stats, rpc_id_dict, rpc_list, functions, aggregations)
+
+    iforward_relative_create = means[0]
+    set_input_relative_iforward_start = means[1]
+    wait_relative_iforward_end = means[2]
+    forward_cb_relative_iforward_start = means[3]
+    get_output_relative_wait_end = means[4]
+
+    iforward_start = iforward_relative_create
+    set_input_start = iforward_start + set_input_relative_iforward_start
+    wait_start = iforward_start + iforward_duration + wait_relative_iforward_end
+    forward_cb_start = iforward_start + forward_cb_relative_iforward_start
+    get_output_start = wait_start + wait_duration + get_output_relative_wait_end
+
+    total_duration = max(
+        iforward_start + iforward_duration,
+        set_input_start + set_input_duration,
+        wait_start + wait_duration,
+        forward_cb_start + forward_cb_duration,
+        get_output_start + get_output_duration,
+    )
+
+    # Normalize all values from 0 to 1
+    origin_rpc_graph = OriginRPCGraph(
+        iforward={'start': iforward_start / total_duration, 'duration': iforward_duration / total_duration},
+        set_input={'start': set_input_start / total_duration, 'duration': set_input_duration / total_duration},
+        wait={'start': wait_start / total_duration, 'duration': wait_duration / total_duration},
+        forward_cb={'start': forward_cb_start / total_duration, 'duration': forward_cb_duration / total_duration},
+        get_output={'start': get_output_start / total_duration, 'duration': get_output_duration / total_duration})
+
+    return origin_rpc_graph.to_ipython_svg()   
+
+@debug_time
+def create_per_rpc_svg_target(stats, rpc_id_dict, rpc_list):
+    # Get mean and variance
+    functions = ['handler', 'ult', 'irespond', 'respond_cb', 'irespond_wait', 'set_output', 'get_input']
+    aggregations = ['duration', 'duration', 'duration', 'duration', 'duration', 'duration', 'duration']
+    means, vars = get_mean_variance_from_rpcs_server(stats, rpc_id_dict, rpc_list, functions, aggregations)
+
+    handler_duration = means[0]
+    ult_duration = means[1]
+    irespond_duration = means[2]
+    respond_cb_duration = means[3]
+    wait_duration = means[4]
+    set_output_duration = means[5]
+    get_input_duration = means[6]
+
+    # Get mean and variance
+    functions = ['ult', 'get_input', 'irespond', 'set_output', 'irespond_wait', 'respond_cb']
+    aggregations = ['relative_timestamp_from_handler_start', 'relative_timestamp_from_ult_start', 'relative_timestamp_from_ult_start', 'relative_timestamp_from_irespond_start', 'relative_timestamp_from_irespond_end', 'relative_timestamp_from_irespond_start']
+    means, vars = get_mean_variance_from_rpcs_server(stats, rpc_id_dict, rpc_list, functions, aggregations)
+
+    ult_relative_handler_start = means[0]
+    get_input_relative_ult_start = means[1]
+    irespond_relative_ult_start = means[2]
+    set_output_relative_irespond_start = means[3]
+    wait_relative_irespond_end = means[4]
+    respond_cb_relative_irespond_start = means[5]
+
+    ult_start = ult_relative_handler_start
+    get_input_start = ult_start + get_input_relative_ult_start
+    irespond_start = ult_start + irespond_relative_ult_start
+    set_output_start = irespond_start + set_output_relative_irespond_start
+    wait_start = irespond_start + irespond_duration + wait_relative_irespond_end
+    respond_cb_start = irespond_start + respond_cb_relative_irespond_start
+
+    total_duration = max(
+        handler_duration,
+        ult_start + ult_duration,
+        get_input_start + get_input_duration,
+        irespond_start + irespond_duration,
+        set_output_start + set_output_duration,
+        wait_start + wait_duration,
+        respond_cb_start + respond_cb_duration
+    )
+
+    # Normalize all values from 0 to 1
+    target_rpc_graph = TargetRPCGraph(
+        handler={'start': 0.0, 'duration': handler_duration / total_duration},
+        ult={'start': ult_start / total_duration, 'duration': ult_duration / total_duration},
+        get_input={'start': get_input_start / total_duration, 'duration': get_input_duration / total_duration},
+        irespond={'start': irespond_start / total_duration, 'duration': irespond_duration / total_duration},
+        set_output={'start': set_output_start / total_duration, 'duration': set_output_duration / total_duration},
+        wait={'start': wait_start / total_duration, 'duration': wait_duration / total_duration},
+        respond_cb={'start': respond_cb_start / total_duration, 'duration': respond_cb_duration / total_duration}
+    )
+
+    return target_rpc_graph.to_ipython_svg()
 
 """ Plot Descriptions """
 def get_heatmap_description(view_type):

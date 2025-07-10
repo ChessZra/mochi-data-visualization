@@ -31,10 +31,6 @@ pip install panel holoviews hvplot pandas pycairo ipython
 ## Usage
 
 ### Quick Start
-
-1. Place your Mochi statistics JSON files in one of the data directories (`data-1/`, `data-2/`, `data-3/`)
-2. Edit the PATH variable in main.py
-
 ```bash
 python main.py
 ```

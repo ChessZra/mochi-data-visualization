@@ -125,7 +125,8 @@ class MochiDashboard():
             main=get_page
         )
         template.show()
-
+    
+    """ General Overview Section (Main Page)"""
     def _create_header(self):
         """Create an engaging header with clear purpose"""
         return pn.Column(
@@ -326,6 +327,7 @@ class MochiDashboard():
             width=MAIN_PAGE_WIDTH
         )
 
+    """ PER-RPC Section """
     def _create_per_rpc_view(self, stats):
         """Create the detailed RPC view with improved user guidance"""
         # Define components
@@ -527,11 +529,29 @@ class MochiDashboard():
                 styles=HIGHLIGHT_STYLE
             )
 
+        try:
+            svg_origin = create_per_rpc_svg_origin(stats, self.rpc_id_dict, rpc_list)
+        except Exception as e:
+            svg_origin = pn.pane.Markdown(
+                f"{str(e)}",
+                width=450,
+                styles=HIGHLIGHT_STYLE
+            )
+
+        try:
+            svg_target = create_per_rpc_svg_target(stats, self.rpc_id_dict, rpc_list)
+        except Exception as e:
+            svg_target = pn.pane.Markdown(
+                f"{str(e)}",
+                width=450,
+                styles=HIGHLIGHT_STYLE
+            )
+
         """Create the detailed analysis layout with user-friendly explanations"""
         return pn.Column(
             pn.pane.Markdown("## Detailed Performance Analysis", styles=SECTION_STYLE),
             pn.pane.Markdown(
-                f"Analyzing **{len(rpc_list)} RPC calls**. Here's what we found:",
+                f"Analyzing **{len(rpc_list)} unique RPC calls**. Here's what we found:",
                 styles=DESCRIPTION_STYLE
             ),
             
@@ -615,6 +635,39 @@ class MochiDashboard():
                 pn.pane.SVG("./img/rpc-target.svg", width=300, height=400),
             ),
             
+            pn.pane.Markdown("### Your RPCs in Detail", styles=SUB_SECTION_STYLE),
+            pn.pane.Markdown(
+                "Now let's dive even deeper and see the steps for all the selected RPCs. These visualizations show the scaled timing of each step in your selected RPCs, helping you identify exactly where bottlenecks occur in your workflow.",
+                styles=DESCRIPTION_STYLE
+            ),
+            pn.Row(
+                pn.Column(
+                    pn.pane.Markdown("#### Client-Side RPC Steps", styles=SUB_SECTION_STYLE),
+                    pn.pane.Markdown(
+                        "This visualization shows the timing breakdown of client-side steps for your selected RPCs. The segments show how the average time was spent in each phase of the client-side process.",
+                        width=450,
+                        styles=DESCRIPTION_STYLE
+                    ),
+                    svg_origin,
+                ),
+                pn.Column(
+                    pn.pane.Markdown("#### Server-Side RPC Steps", styles=SUB_SECTION_STYLE),
+                    pn.pane.Markdown(
+                        "This visualization shows the timing breakdown of server-side steps for your selected RPCs. The segments show how the average time was spent in each phase of the server-side process.",
+                        width=450,
+                        styles=DESCRIPTION_STYLE
+                    ),
+                    svg_target,
+                ),
+            ),
+
+            pn.pane.Markdown(
+                """
+                Do you notice anything unusual? Watch for long set/get_input or set/get_output times- this means heavy data serialization, so consider bulk transfers. If iforward_wait is long but starts right after forwarding ends, it's likely a blocking call- try overlapping computation. If ult.relative_timestamp_from_handler_start is high or inconsistent, you may have a scheduling delay- more threads or servers can help.
+                """,
+                styles=DESCRIPTION_STYLE
+            ),
+
             pn.pane.Markdown("### Where is Time Being Spent?", styles=SUB_SECTION_STYLE),
             pn.pane.Markdown(
                 "This breakdown shows exactly where time is being consumed in your RPC workflow. Look for the tallest bars - those are your bottlenecks!",
