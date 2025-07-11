@@ -1,3 +1,90 @@
+"""
+Mochi Data Visualization - Plotting Functions
+
+This module provides a comprehensive set of functions for visualizing RPC (Remote Procedure Call)
+performance data. It follows a consistent methodology for data processing and visualization.
+
+GENERAL METHODOLOGY:
+===================
+
+1. DATA ACCESS PATTERN:
+    - All functions take a 'stats' object containing DataFrames (origin_rpc_df, target_rpc_df, bulk_transfer_df)
+    - Client-side data: stats.origin_rpc_df (RPC calls made by clients)
+    - Server-side data: stats.target_rpc_df (RPC executions on servers)
+    - Bulk transfer data: stats.bulk_transfer_df (RDMA data transfers)
+
+2. RPC IDENTIFICATION PATTERN:
+    - RPCs are identified by tuples: (src_address, dst_address, RPC_string)
+    - RPC_string format: "source ➔ destination" or just "destination"
+    - rpc_id_dict maps RPC names to their numeric IDs
+    - rpc_name maps RPC IDs back to their string names
+
+3. DATA FILTERING PATTERN:
+    If we want to filter out the stats dataframe with only the RPC we want:
+   - Common pattern: df.xs((parent_rpc_id, rpc_id, src_address, dst_address), level=[...])
+        - What this does: Returns a dataframe with that specific RPC where multiple rows are possible due to provider ID's to which aggregation handling is needed.
+
+4. AGGREGATION PATTERN:
+    - Sum durations: df['function']['duration']['sum']
+    - Count calls: df['function']['duration']['num']
+    - Get averages: df['function']['duration']['avg']
+    - Get variance: df['function']['duration']['var']
+    - Get min/max: df['function']['duration']['min/max']
+
+5. VISUALIZATION PATTERN:
+    - Use hvplot for pandas DataFrames: df.hvplot.bar(...)
+    - Use HoloViews for complex plots: hv.Chord(...)
+    - Recommended option: .opts(default_tools=["pan"], shared_axes=False)
+    - Standard dimensions: height=500, width=1000
+
+6. ERROR HANDLING PATTERN:
+    - Check if data exists before processing
+    - Raise ValueError with descriptive messages when no data is found
+    - Use try/except blocks for data access that might fail
+
+7. STATISTICAL AGGREGATION PATTERN:
+    - For combining variances: use the formula for combining variances from different groups
+    - For means: weighted average based on number of samples
+    - For multiple RPCs: aggregate across all RPCs in rpc_list
+
+8. GRAPH CREATION PATTERN:
+    - Filter data by RPC criteria
+    - Aggregate data appropriately (sum, mean, etc.)
+    - Create visualization with hvplot or HoloViews
+    - Apply standard styling and options
+    - Return the plot object
+
+EXTENDING THE CODEBASE:
+======================
+
+To add a new graph function:
+Example template:
+@debug_time
+def create_graph_X(stats, rpc_id_dict, rpc_list, **kwargs):
+    1. Filter data based on rpc_list
+    2. Aggregate data appropriately
+    3. Create visualization
+    4. Apply styling
+    5. Return plot
+
+COMMON DATA STRUCTURES:
+======================
+    - stats.origin_rpc_df: Multi-index DataFrame with client-side RPC data
+    - stats.target_rpc_df: Multi-index DataFrame with server-side RPC data
+    - stats.bulk_transfer_df: DataFrame with RDMA transfer data
+    - rpc_list: List of (src_address, dst_address, RPC_string) tuples
+    - RPC_string: A string of "source ➔ destination" or just "destination" 
+    - rpc_id_dict: Dict mapping RPC names to IDs
+    - rpc_name: Dict mapping RPC IDs to names
+
+COMMON FUNCTIONS:
+================
+    - get_src_dst_from_rpc_string(): Parse RPC strings
+    - wrap_label(): Format long labels for display
+    - get_mean_variance_from_rpcs_client/server(): Statistical aggregation
+    - debug_time: Performance monitoring decorator
+"""
+
 import holoviews as hv
 import pandas as pd
 import time
@@ -6,8 +93,17 @@ from collections import Counter
 from holoviews import opts
 from mochi_perf.graph import OriginRPCGraph, TargetRPCGraph
 
+""" Helper Functions """
 def debug_time(func):
-    """Simple timing decorator"""
+    """
+    Simple timing decorator that measures and prints the execution time of decorated functions.
+    
+    Args:
+        func: The function to be timed
+        
+    Returns:
+        wrapper: A wrapped version of the function that prints timing information
+    """
     def wrapper(*args, **kwargs):
         start = time.time()
         result = func(*args, **kwargs)
@@ -16,6 +112,15 @@ def debug_time(func):
     return wrapper
 
 def get_src_dst_from_rpc_string(RPC):
+    """
+    Parse an RPC string to extract source and destination components.
+    
+    Args:
+        RPC (str): RPC string in format "source ➔ destination" or just "destination"
+        
+    Returns:
+        tuple: (source, destination) where source is 'None' if not specified
+    """
     if '➔' in RPC:
         src, dest = RPC[:RPC.index('➔')-1], RPC[RPC.index('➔')+2:]
     else:
@@ -23,23 +128,57 @@ def get_src_dst_from_rpc_string(RPC):
     return src, dest
 
 def wrap_label(label, width=10):
+    """
+    Wrap a long label by inserting newlines at specified intervals.
+    
+    Args:
+        label (str): The label text to wrap
+        width (int): Maximum characters per line (default: 10)
+        
+    Returns:
+        str: The wrapped label with newlines inserted
+    """
     return '\n'.join([label[i:i+width] for i in range(0, len(label), width)])
 
 def get_all_addresses(stats):
+    """
+    Extract all unique addresses from both client and server RPC data.
+    
+    Args:
+        stats: Statistics object containing origin_rpc_df and target_rpc_df
+        
+    Returns:
+        list: Sorted list of all unique addresses found in the data
+    """
     address1 = stats.origin_rpc_df.index.get_level_values('address')
     address2 = stats.origin_rpc_df.index.get_level_values('sent_to')
     address3 = stats.target_rpc_df.index.get_level_values('address')
     address4 = stats.target_rpc_df.index.get_level_values('received_from')
     return sorted(address1.union(address2).union(address3).union(address4).unique().to_list())
 
-""" 
-Returns a tuple:
-    (
-        mean_client: list[float], the aggregated mean of all RPCs provided in <rpc_list> in each RPC step
-        var_client: list[float], the aggregated variance of all RPCs provided in <rpc_list> in each RPC step
-    )
-"""
 def get_mean_variance_from_rpcs_client(stats, rpc_id_dict, rpc_list, functions, aggregations):
+    """
+    Calculate aggregated mean and variance for client-side RPC functions across multiple RPCs.
+    
+    This function processes client-side RPC data to compute statistical measures for each
+    function step across all specified RPCs. It handles variance aggregation using the
+    formula for combining variances from different groups.
+    
+    Args:
+        stats: Statistics object containing origin_rpc_df
+        rpc_id_dict (dict): Mapping of RPC names to their IDs
+        rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
+        functions (list): List of function names to analyze
+        aggregations (list): List of aggregation types corresponding to each function
+        
+    Returns:
+        tuple: (mean_client, var_client) where:
+            - mean_client (list[float]): Aggregated mean for each function step
+            - var_client (list[float]): Aggregated variance for each function step
+            
+    Raises:
+        ValueError: If no data is available for the selected RPCs
+    """
 
     mean_client = [None] * len(functions)
     var_client = [None] * len(functions)
@@ -98,14 +237,29 @@ def get_mean_variance_from_rpcs_client(stats, rpc_id_dict, rpc_list, functions, 
 
     return mean_client, var_client
 
-""" 
-Returns a tuple:
-    (
-        mean_server: list[float], the aggregated mean of all RPCs provided in <rpc_list> in each RPC step
-        var_server: list[float], the aggregated variance of all RPCs provided in <rpc_list> in each RPC step
-    )
-"""
 def get_mean_variance_from_rpcs_server(stats, rpc_id_dict, rpc_list, functions, aggregations):
+    """
+    Calculate aggregated mean and variance for server-side RPC functions across multiple RPCs.
+    
+    This function processes server-side RPC data to compute statistical measures for each
+    function step across all specified RPCs. It handles variance aggregation using the
+    formula for combining variances from different groups.
+    
+    Args:
+        stats: Statistics object containing target_rpc_df
+        rpc_id_dict (dict): Mapping of RPC names to their IDs
+        rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
+        functions (list): List of function names to analyze
+        aggregations (list): List of aggregation types corresponding to each function
+        
+    Returns:
+        tuple: (mean_server, var_server) where:
+            - mean_server (list[float]): Aggregated mean for each function step
+            - var_server (list[float]): Aggregated variance for each function step
+            
+    Raises:
+        ValueError: If no data is available for the selected RPCs
+    """
 
     mean_server = [None] * len(functions)
     var_server = [None] * len(functions)
@@ -167,6 +321,18 @@ def get_mean_variance_from_rpcs_server(stats, rpc_id_dict, rpc_list, functions, 
 """ Main Page Plots """
 @debug_time
 def create_graph_1(stats):
+    """
+    Create a bar chart showing total RPC call time by process.
+    
+    This graph aggregates the total time spent by each client process making RPC calls,
+    including iforward duration, wait time, and relative timestamps.
+    
+    Args:
+        stats: Statistics object containing origin_rpc_df
+        
+    Returns:
+        hv.Bars: HoloViews bar chart showing total RPC call time by process
+    """
     df = stats.origin_rpc_df
 
     step_1 = df['iforward']['duration']['sum'].rename('iforward_sum')
@@ -183,6 +349,18 @@ def create_graph_1(stats):
 
 @debug_time
 def create_graph_2(stats):
+    """
+    Create a bar chart showing total RPC execution time by process.
+    
+    This graph shows the total time each server process spends executing RPC requests,
+    based on the 'ult' duration metric.
+    
+    Args:
+        stats: Statistics object containing target_rpc_df
+        
+    Returns:
+        hv.Bars: HoloViews bar chart showing total RPC execution time by process
+    """
     df = stats.target_rpc_df
     aggregate_process_df = df['ult']['duration']['sum'].groupby('address').agg('sum')
 
@@ -190,6 +368,20 @@ def create_graph_2(stats):
 
 @debug_time
 def create_graph_3(stats, address, rpc_name):
+    """
+    Create a bar chart showing top 5 RPC call times for a specific process.
+    
+    This graph shows the top 5 RPC calls made by a specific client process,
+    including total time spent on each RPC type.
+    
+    Args:
+        stats: Statistics object containing origin_rpc_df
+        address (str): The client process address to analyze
+        rpc_name (dict): Mapping of RPC IDs to their names
+        
+    Returns:
+        hv.Bars: HoloViews bar chart showing top 5 RPC call times for the process
+    """
     df = stats.origin_rpc_df
     filtered_process = df.xs(address, level='address')
 
@@ -209,7 +401,21 @@ def create_graph_3(stats, address, rpc_name):
     return merged['total_sum'].groupby(level=0).agg('sum').sort_values(ascending=False).head(5).hvplot.bar(xlabel='Remote Procedure Calls (RPC)', ylabel='Time', title=f'Top 5 RPC Call Times for {address}', rot=0, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
 
 @debug_time
-def create_graph_4(stats, address, rpc_name):   
+def create_graph_4(stats, address, rpc_name):
+    """
+    Create a bar chart showing top 5 RPC execution times for a specific process.
+    
+    This graph shows the top 5 RPC executions handled by a specific server process,
+    including total time spent on each RPC type.
+    
+    Args:
+        stats: Statistics object containing target_rpc_df
+        address (str): The server process address to analyze
+        rpc_name (dict): Mapping of RPC IDs to their names
+        
+    Returns:
+        hv.Bars: HoloViews bar chart showing top 5 RPC execution times for the process
+    """   
     df = stats.target_rpc_df
     filtered_process = df.xs(address, level='address')
 
@@ -223,6 +429,24 @@ def create_graph_4(stats, address, rpc_name):
 
 @debug_time
 def create_graph_5(stats, metric, rpc_name):
+    """
+    Create a bar chart showing top 5 busiest RPCs based on selected metric.
+    
+    This graph shows the top 5 RPCs that consume the most resources based on the
+    selected metric (Server Execution Time, Client Call Time, Bulk Transfer Time, or RDMA Data Transfer Size).
+    
+    Args:
+        stats: Statistics object containing various dataframes
+        metric (str): The metric to analyze ('Server Execution Time', 'Client Call Time', 
+                     'Bulk Transfer Time', or 'RDMA Data Transfer Size')
+        rpc_name (dict): Mapping of RPC IDs to their names
+        
+    Returns:
+        hv.Bars: HoloViews bar chart showing top 5 busiest RPCs by the selected metric
+        
+    Raises:
+        Exception: If an invalid metric is provided
+    """
     # Configuration mapping for metrics
     metric_config = {
         'Server Execution Time': {
@@ -267,6 +491,24 @@ def create_graph_5(stats, metric, rpc_name):
 """ Per-RPC Plots """
 @debug_time
 def create_chord_graph(stats, rpc_id_dict, rpc_list, view_type='clients'):
+    """
+    Create a chord diagram showing RPC communication patterns between processes.
+    
+    This graph visualizes the flow of RPC calls between different processes,
+    showing which processes communicate with each other and the volume of communication.
+    
+    Args:
+        stats: Statistics object containing origin_rpc_df and target_rpc_df
+        rpc_id_dict (dict): Mapping of RPC names to their IDs
+        rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
+        view_type (str): Either 'clients' or 'servers' to determine data source
+        
+    Returns:
+        hv.Chord: HoloViews chord diagram showing communication patterns
+        
+    Raises:
+        ValueError: If no data is available for the selected RPCs
+    """
 
     f = Counter() # (src, dest): weight -> where src and dest are processes, and weight is the total duration (depending on view_type)
     unique_nodes = set()
@@ -338,6 +580,23 @@ def create_chord_graph(stats, rpc_id_dict, rpc_list, view_type='clients'):
 
 @debug_time
 def create_graph_6(stats, rpc_id_dict, rpc_list):
+    """
+    Create a bar chart showing top 5 server RPCs by average execution time.
+    
+    This graph shows the top 5 server-side RPCs with the highest average execution time,
+    including max, average, and min execution times for each RPC.
+    
+    Args:
+        stats: Statistics object containing target_rpc_df
+        rpc_id_dict (dict): Mapping of RPC names to their IDs
+        rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
+        
+    Returns:
+        hv.Bars: HoloViews bar chart showing top 5 server RPCs by average execution time
+        
+    Raises:
+        ValueError: If no data is available for the selected RPCs
+    """
     rpcs = []
     rpcs_index = []
     not_found = []
@@ -374,6 +633,23 @@ def create_graph_6(stats, rpc_id_dict, rpc_list):
 
 @debug_time
 def create_graph_7(stats, rpc_id_dict, rpc_list):
+    """
+    Create a bar chart showing top 5 client RPCs by average call time.
+    
+    This graph shows the top 5 client-side RPCs with the highest average call time,
+    including max, average, and min call times for each RPC.
+    
+    Args:
+        stats: Statistics object containing origin_rpc_df
+        rpc_id_dict (dict): Mapping of RPC names to their IDs
+        rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
+        
+    Returns:
+        hv.Bars: HoloViews bar chart showing top 5 client RPCs by average call time
+        
+    Raises:
+        ValueError: If no data is available for the selected RPCs
+    """
     rpcs = []
     rpcs_index = []
     not_found = []
@@ -410,6 +686,23 @@ def create_graph_7(stats, rpc_id_dict, rpc_list):
 
 @debug_time
 def create_graph_8(stats, rpc_id_dict, rpc_list):
+    """
+    Create a bar chart showing total time spent in each RPC step across all selected RPCs.
+    
+    This graph aggregates the total time spent in each step of the RPC process
+    (both client and server side) across all selected RPCs, helping identify bottlenecks.
+    
+    Args:
+        stats: Statistics object containing origin_rpc_df and target_rpc_df
+        rpc_id_dict (dict): Mapping of RPC names to their IDs
+        rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
+        
+    Returns:
+        hv.Bars: HoloViews bar chart showing total duration by RPC step
+        
+    Raises:
+        ValueError: If no data is available for the selected RPCs
+    """
 
     functions_server = ['handler', 'ult', 'irespond', 'respond_cb', 'irespond_wait', 'set_output', 'get_input']
     functions_client = ['iforward', 'forward_cb', 'iforward_wait', 'set_input', 'get_output']
@@ -453,6 +746,23 @@ def create_graph_8(stats, rpc_id_dict, rpc_list):
 
 @debug_time
 def create_graph_9(stats, rpc_id_dict, rpc_list):
+    """
+    Create a bar chart with error bars showing server-side RPC function statistics.
+    
+    This graph shows the mean duration and standard deviation for each server-side
+    RPC function step, with error bars indicating the variability in execution times.
+    
+    Args:
+        stats: Statistics object containing target_rpc_df
+        rpc_id_dict (dict): Mapping of RPC names to their IDs
+        rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
+        
+    Returns:
+        hv.Overlay: HoloViews overlay of bar chart and error bars
+        
+    Raises:
+        ValueError: If no data is available for the selected RPCs
+    """
 
     functions_server = ['handler', 'ult', 'irespond', 'respond_cb', 'irespond_wait', 'set_output', 'get_input']
     aggregations = ['duration', 'duration', 'duration', 'duration', 'duration', 'duration', 'duration']
@@ -496,6 +806,23 @@ def create_graph_9(stats, rpc_id_dict, rpc_list):
 
 @debug_time
 def create_graph_10(stats, rpc_id_dict, rpc_list):
+    """
+    Create a bar chart with error bars showing client-side RPC function statistics.
+    
+    This graph shows the mean duration and standard deviation for each client-side
+    RPC function step, with error bars indicating the variability in call times.
+    
+    Args:
+        stats: Statistics object containing origin_rpc_df
+        rpc_id_dict (dict): Mapping of RPC names to their IDs
+        rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
+        
+    Returns:
+        hv.Overlay: HoloViews overlay of bar chart and error bars
+        
+    Raises:
+        ValueError: If no data is available for the selected RPCs
+    """
 
     functions_client = ['iforward', 'forward_cb', 'iforward_wait', 'set_input', 'get_output']
     aggregations = ['duration', 'duration', 'duration', 'duration', 'duration']
@@ -539,6 +866,24 @@ def create_graph_10(stats, rpc_id_dict, rpc_list):
 
 @debug_time
 def create_rpc_load_heatmap(stats, rpc_id_dict, rpc_list, view_type='clients'):
+    """
+    Create a heatmap showing RPC load distribution by clients or servers.
+    
+    This graph visualizes the distribution of RPC calls across different processes,
+    showing which processes are handling which types of RPCs and the volume of each.
+    
+    Args:
+        stats: Statistics object containing origin_rpc_df and target_rpc_df
+        rpc_id_dict (dict): Mapping of RPC names to their IDs
+        rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
+        view_type (str): Either 'clients' or 'servers' to determine data source
+        
+    Returns:
+        hv.HeatMap: HoloViews heatmap showing RPC load distribution
+        
+    Raises:
+        ValueError: If no data is available for the selected RPCs
+    """
     rpcs = []
     for src_address, dst_address, RPC in rpc_list:
         src, dest = get_src_dst_from_rpc_string(RPC)
@@ -581,6 +926,20 @@ def create_rpc_load_heatmap(stats, rpc_id_dict, rpc_list, view_type='clients'):
 
 @debug_time
 def create_per_rpc_svg_origin(stats, rpc_id_dict, rpc_list):
+    """
+    Create an SVG visualization of client-side RPC execution timeline.
+    
+    This function generates an SVG diagram showing the relative timing and duration
+    of each step in the client-side RPC process, normalized to show the complete flow.
+    
+    Args:
+        stats: Statistics object containing origin_rpc_df
+        rpc_id_dict (dict): Mapping of RPC names to their IDs
+        rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
+        
+    Returns:
+        str: SVG string representation of the client-side RPC timeline
+    """
     # Get mean and variance
     functions = ['iforward', 'forward_cb', 'iforward_wait', 'set_input', 'get_output']
     aggregations = ['duration', 'duration', 'duration', 'duration', 'duration']
@@ -628,6 +987,20 @@ def create_per_rpc_svg_origin(stats, rpc_id_dict, rpc_list):
 
 @debug_time
 def create_per_rpc_svg_target(stats, rpc_id_dict, rpc_list):
+    """
+    Create an SVG visualization of server-side RPC execution timeline.
+    
+    This function generates an SVG diagram showing the relative timing and duration
+    of each step in the server-side RPC process, normalized to show the complete flow.
+    
+    Args:
+        stats: Statistics object containing target_rpc_df
+        rpc_id_dict (dict): Mapping of RPC names to their IDs
+        rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
+        
+    Returns:
+        str: SVG string representation of the server-side RPC timeline
+    """
     # Get mean and variance
     functions = ['handler', 'ult', 'irespond', 'respond_cb', 'irespond_wait', 'set_output', 'get_input']
     aggregations = ['duration', 'duration', 'duration', 'duration', 'duration', 'duration', 'duration']
@@ -685,6 +1058,15 @@ def create_per_rpc_svg_target(stats, rpc_id_dict, rpc_list):
 
 """ Plot Descriptions """
 def get_heatmap_description(view_type):
+    """
+    Get a description for the RPC load heatmap based on the view type.
+    
+    Args:
+        view_type (str): Either 'clients' or 'servers' to determine description
+        
+    Returns:
+        str: Description text explaining what the heatmap shows and how to interpret it
+    """
     if view_type == 'clients':
         return (
             "**What this shows:** This heatmap lets you quickly spot which client processes are making the most RPC calls and which types of RPCs they use most often. "
@@ -697,48 +1079,96 @@ def get_heatmap_description(view_type):
         )
 
 def get_graph_1_description():
+    """
+    Get a description for graph 1 (Total RPC Call Time by Process).
+    
+    Returns:
+        str: Description text explaining what the graph shows and how to interpret it
+    """
     return (
         "**What this shows:** See which processes are the most active clients in your system. "
         "Higher bars mean a process is making more RPC calls to others. Use this to spot your busiest clients."
     )
 
 def get_graph_2_description():
+    """
+    Get a description for graph 2 (Total RPC Execution Time by Process).
+    
+    Returns:
+        str: Description text explaining what the graph shows and how to interpret it
+    """
     return (
         "**What this shows:** Find out which processes are doing the most work as servers. "
         "Higher bars mean a process is handling more RPC requests. This helps you spot overloaded servers."
     )
 
 def get_graph_3_description():
+    """
+    Get a description for graph 3 (Top 5 RPC Call Times for a specific process).
+    
+    Returns:
+        str: Description text explaining what the graph shows and how to interpret it
+    """
     return (
         "**What this shows:** For the selected process, see how much time it spends calling each type of RPC. "
         "This helps you understand what kinds of work your client is doing most."
     )
 
 def get_graph_4_description():
+    """
+    Get a description for graph 4 (Top 5 RPC Execution Times for a specific process).
+    
+    Returns:
+        str: Description text explaining what the graph shows and how to interpret it
+    """
     return (
         "**What this shows:** For the selected process, see how much time it spends handling each type of incoming RPC. "
         "This reveals what kinds of requests your server is working on most."
     )
 
 def get_graph_5_description():
+    """
+    Get a description for graph 5 (Top 5 Busiest RPCs by metric).
+    
+    Returns:
+        str: Description text explaining what the graph shows and how to interpret it
+    """
     return (
         "**What this shows:** These are the top 5 RPCs using the most resources, based on your selected metric. "
         "Use this to quickly find which RPCs are slowing things down or using the most bandwidth."
     )
 
 def get_graph_6_description():
+    """
+    Get a description for graph 6 (Top 5 Server RPCs by Average Execution Time).
+    
+    Returns:
+        str: Description text explaining what the graph shows and how to interpret it
+    """
     return (
         "**What this shows:** These are the top 5 server-side RPCs with the highest average execution time. "
         "For each, you can see the max, average, and min times. Use this to find slow server operations to optimize."
     )
 
 def get_graph_7_description():
+    """
+    Get a description for graph 7 (Top 5 Client RPCs by Average Call Time).
+    
+    Returns:
+        str: Description text explaining what the graph shows and how to interpret it
+    """
     return (
         "**What this shows:** These are the top 5 client-side RPCs with the highest average call time. "
         "For each, you can see the max, average, and min times. Use this to spot slow client operations or network delays."
     )
 
 def get_graph_8_description():
+    """
+    Get a description for graph 8 (Total Time Spent in Each RPC Step).
+    
+    Returns:
+        str: Description text explaining what the graph shows and how to interpret it
+    """
     return (
         "**What this shows:** See how much total time is spent in each step of the RPC process, across all selected RPCs. "
         "Taller bars mean more time spent in that step. Focus on the tallest bars to find bottlenecks."

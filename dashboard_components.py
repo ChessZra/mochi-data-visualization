@@ -551,7 +551,7 @@ class MochiDashboard():
         return pn.Column(
             pn.pane.Markdown("## Detailed Performance Analysis", styles=SECTION_STYLE),
             pn.pane.Markdown(
-                f"Analyzing **{len(rpc_list)} unique RPC calls**. Here's what we found:",
+                f"Analyzing **{len(rpc_list)} unique RPC call(s)**. Here's what we found:",
                 styles=DESCRIPTION_STYLE
             ),
             
