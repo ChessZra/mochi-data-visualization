@@ -86,6 +86,7 @@ COMMON FUNCTIONS:
 """
 
 import holoviews as hv
+import hvplot.pandas # For Series
 import pandas as pd
 import time
 

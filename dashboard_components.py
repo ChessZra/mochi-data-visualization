@@ -64,9 +64,6 @@ COMMON COMPONENTS:
 """
 import panel as pn
 
-import holoviews as hv
-import hvplot.pandas
-
 from holoviews.streams import Tap
 from plotting_functions import *
 
@@ -467,7 +464,15 @@ class MochiDashboard():
                 rpc_list.append((src_address, dst_address, RPC))
             
             right_layout.clear()
-            right_layout.append(self._create_detailed_per_rpc_layout(stats, rpc_list))
+            # Add loading indicator
+            loading_indicator = pn.indicators.LoadingSpinner(value=True, width=50, height=50, color='primary')
+            right_layout.append(pn.Column(loading_indicator, pn.pane.Markdown("""Loading detailed analysis... (this may take a while)\n\nFirst run? It can take longer as we build the cache. Subsequent runs will be faster.""", styles=DESCRIPTION_STYLE)))
+
+            # This method will take a while
+            detailed_rpc_layout = self._create_detailed_per_rpc_layout(stats, rpc_list)            
+        
+            right_layout.clear()
+            right_layout.append(detailed_rpc_layout)
 
         def on_apply_button_click(event):
             if not self.src_files or not self.dest_files:
@@ -477,7 +482,7 @@ class MochiDashboard():
             df = create_rpc_dataframe()
             table = pn.widgets.Tabulator(df, selectable=True, disabled=True, configuration={'selectableRowsRangeMode': 'click'})
             
-            confirm_button = pn.widgets.Button(
+            confirm_button = pn.widgets.Button( 
                 name='View Detailed Analysis', 
                 button_type='primary',
                 width=200
