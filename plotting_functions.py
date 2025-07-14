@@ -860,7 +860,7 @@ def create_chord_graph(stats, rpc_id_dict, rpc_list, view_type='clients'):
             node_color='index_color',
             edge_color='source',
             labels='index_name',
-            width=700,
+            width=800,
             height=700
         )
     ).opts(shared_axes=False)
