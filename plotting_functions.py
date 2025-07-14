@@ -7,47 +7,47 @@ performance data. It follows a consistent methodology for data processing and vi
 GENERAL METHODOLOGY:
 ===================
 
-1. DATA ACCESS PATTERN:
+1. DATA ACCESS:
     - All functions take a 'stats' object containing DataFrames (origin_rpc_df, target_rpc_df, bulk_transfer_df)
     - Client-side data: stats.origin_rpc_df (RPC calls made by clients)
     - Server-side data: stats.target_rpc_df (RPC executions on servers)
     - Bulk transfer data: stats.bulk_transfer_df (RDMA data transfers)
 
-2. RPC IDENTIFICATION PATTERN:
+2. RPC IDENTIFICATION:
     - RPCs are identified by tuples: (src_address, dst_address, RPC_string)
     - RPC_string format: "source ➔ destination" or just "destination"
     - rpc_id_dict maps RPC names to their numeric IDs
     - rpc_name maps RPC IDs back to their string names
 
-3. DATA FILTERING PATTERN:
+3. DATA FILTERING:
     If we want to filter out the stats dataframe with only the RPC we want:
    - Common pattern: df.xs((parent_rpc_id, rpc_id, src_address, dst_address), level=[...])
         - What this does: Returns a dataframe with that specific RPC where multiple rows are possible due to provider ID's to which aggregation handling is needed.
 
-4. AGGREGATION PATTERN:
+4. AGGREGATION:
     - Sum durations: df['function']['duration']['sum']
     - Count calls: df['function']['duration']['num']
     - Get averages: df['function']['duration']['avg']
     - Get variance: df['function']['duration']['var']
     - Get min/max: df['function']['duration']['min/max']
 
-5. VISUALIZATION PATTERN:
+5. VISUALIZATION:
     - Use hvplot for pandas DataFrames: df.hvplot.bar(...)
     - Use HoloViews for complex plots: hv.Chord(...)
     - Recommended option: .opts(default_tools=["pan"], shared_axes=False)
     - Standard dimensions: height=500, width=1000
 
-6. ERROR HANDLING PATTERN:
+6. ERROR HANDLING:
     - Check if data exists before processing
     - Raise ValueError with descriptive messages when no data is found
     - Use try/except blocks for data access that might fail
 
-7. STATISTICAL AGGREGATION PATTERN:
+7. STATISTICAL AGGREGATION:
     - For combining variances: use the formula for combining variances from different groups
     - For means: weighted average based on number of samples
     - For multiple RPCs: aggregate across all RPCs in rpc_list
 
-8. GRAPH CREATION PATTERN:
+8. GRAPH CREATION:
     - Filter data by RPC criteria
     - Aggregate data appropriately (sum, mean, etc.)
     - Create visualization with hvplot or HoloViews
@@ -111,20 +111,20 @@ def debug_time(func):
         return result
     return wrapper
 
-def get_src_dst_from_rpc_string(RPC):
+def get_src_dst_from_rpc_string(rpc_string):
     """
     Parse an RPC string to extract source and destination components.
     
     Args:
-        RPC (str): RPC string in format "source ➔ destination" or just "destination"
+        rpc_string (str): rpc_string string in format "source ➔ destination" or just "destination"
         
     Returns:
         tuple: (source, destination) where source is 'None' if not specified
     """
-    if '➔' in RPC:
-        src, dest = RPC[:RPC.index('➔')-1], RPC[RPC.index('➔')+2:]
+    if '➔' in rpc_string:
+        src, dest = rpc_string[:rpc_string.index('➔')-1], rpc_string[rpc_string.index('➔')+2:]
     else:
-        src, dest = 'None', RPC
+        src, dest = 'None', rpc_string
     return src, dest
 
 def wrap_label(label, width=10):
@@ -490,95 +490,6 @@ def create_graph_5(stats, metric, rpc_name):
 
 """ Per-RPC Plots """
 @debug_time
-def create_chord_graph(stats, rpc_id_dict, rpc_list, view_type='clients'):
-    """
-    Create a chord diagram showing RPC communication patterns between processes.
-    
-    This graph visualizes the flow of RPC calls between different processes,
-    showing which processes communicate with each other and the volume of communication.
-    
-    Args:
-        stats: Statistics object containing origin_rpc_df and target_rpc_df
-        rpc_id_dict (dict): Mapping of RPC names to their IDs
-        rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
-        view_type (str): Either 'clients' or 'servers' to determine data source
-        
-    Returns:
-        hv.Chord: HoloViews chord diagram showing communication patterns
-        
-    Raises:
-        ValueError: If no data is available for the selected RPCs
-    """
-
-    f = Counter() # (src, dest): weight -> where src and dest are processes, and weight is the total duration (depending on view_type)
-    unique_nodes = set()
-
-    for src_address, dst_address, RPC in rpc_list:
-        src, dest = get_src_dst_from_rpc_string(RPC)
-        
-        try:
-            if view_type == 'clients':
-                df = stats.origin_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.origin_rpc_df.index.names.index('parent_rpc_id'), stats.origin_rpc_df.index.names.index('rpc_id'), stats.origin_rpc_df.index.names.index('address'), stats.origin_rpc_df.index.names.index('sent_to')], drop_level=False)
-            else:
-                df = stats.target_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.target_rpc_df.index.names.index('parent_rpc_id'), stats.target_rpc_df.index.names.index('rpc_id'), stats.target_rpc_df.index.names.index('received_from'), stats.target_rpc_df.index.names.index('address')], drop_level=False)
-        except:
-            continue
-
-        for index, row in df.iterrows():
-            if view_type == 'servers':
-                address, received_from = index[1], index[7]
-                f[(received_from, address)] += row['ult']['duration']['sum']
-                unique_nodes.add(received_from)
-            else:
-                address, sent_to = index[1], index[7]
-                f[(address, sent_to)] += (row['iforward']['duration']['sum'] + row['iforward_wait']['relative_timestamp_from_iforward_end']['sum'] + row['iforward_wait']['duration']['sum'])
-                unique_nodes.add(sent_to)
-            unique_nodes.add(address)
-
-    if not unique_nodes:
-        if view_type == 'clients':
-            raise ValueError("No data available: None of the selected RPCs were found in the client-side data. This may mean these RPCs were not issued by the client, were filtered out, or do not exist for your current selection.")
-        else:
-            raise ValueError("No data available: None of the selected RPCs were found in the server-side data. This may mean these RPCs were not executed on the server, were filtered out, or do not exist for your current selection.")
-            
-    address_to_node_id = {}
-    for index, node in enumerate(list(unique_nodes)):
-        address_to_node_id[node] = index
-
-    edges = []
-    for key, value in f.items():
-        u, v = key
-        w = value
-        edges.append({'source': address_to_node_id[u], 'target': address_to_node_id[v], 'weight': w})
-
-    # Create the network dataframe for Chord
-    chord_df = pd.DataFrame(edges)
-
-    # Create the data dataframe for Chord opts
-    nodes_df = pd.DataFrame([
-        {
-            'index': address_to_node_id[node],
-            'index_name': node,
-            'index_color': i        
-        }
-        for i, node in enumerate(unique_nodes)
-    ])
-
-    dataset = hv.Dataset(nodes_df, 'index')
-
-    return hv.Chord((chord_df, dataset)).opts(
-        opts.Chord(
-            cmap='Category20',
-            edge_cmap='Category20',
-            node_color='index_color',
-            edge_color='source',
-            labels='index_name',
-            width=700,
-            height=700
-        )
-    ).opts(shared_axes=False)
-
-@debug_time
 def create_graph_6(stats, rpc_id_dict, rpc_list):
     """
     Create a bar chart showing top 5 server RPCs by average execution time.
@@ -863,6 +774,95 @@ def create_graph_10(stats, rpc_id_dict, rpc_list):
     error_plot = hv.ErrorBars(error_data, kdims=['Function'], vdims=['Mean Duration', 'Std Dev'])
 
     return (bar_plot * error_plot).opts(shared_axes=False, default_tools=["pan"])
+
+@debug_time
+def create_chord_graph(stats, rpc_id_dict, rpc_list, view_type='clients'):
+    """
+    Create a chord diagram showing RPC communication patterns between processes.
+    
+    This graph visualizes the flow of RPC calls between different processes,
+    showing which processes communicate with each other and the volume of communication.
+    
+    Args:
+        stats: Statistics object containing origin_rpc_df and target_rpc_df
+        rpc_id_dict (dict): Mapping of RPC names to their IDs
+        rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
+        view_type (str): Either 'clients' or 'servers' to determine data source
+        
+    Returns:
+        hv.Chord: HoloViews chord diagram showing communication patterns
+        
+    Raises:
+        ValueError: If no data is available for the selected RPCs
+    """
+
+    f = Counter() # (src, dest): weight -> where src and dest are processes, and weight is the total duration (depending on view_type)
+    unique_nodes = set()
+
+    for src_address, dst_address, RPC in rpc_list:
+        src, dest = get_src_dst_from_rpc_string(RPC)
+        
+        try:
+            if view_type == 'clients':
+                df = stats.origin_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.origin_rpc_df.index.names.index('parent_rpc_id'), stats.origin_rpc_df.index.names.index('rpc_id'), stats.origin_rpc_df.index.names.index('address'), stats.origin_rpc_df.index.names.index('sent_to')], drop_level=False)
+            else:
+                df = stats.target_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.target_rpc_df.index.names.index('parent_rpc_id'), stats.target_rpc_df.index.names.index('rpc_id'), stats.target_rpc_df.index.names.index('received_from'), stats.target_rpc_df.index.names.index('address')], drop_level=False)
+        except:
+            continue
+
+        for index, row in df.iterrows():
+            if view_type == 'servers':
+                address, received_from = index[1], index[7]
+                f[(received_from, address)] += row['ult']['duration']['sum']
+                unique_nodes.add(received_from)
+            else:
+                address, sent_to = index[1], index[7]
+                f[(address, sent_to)] += (row['iforward']['duration']['sum'] + row['iforward_wait']['relative_timestamp_from_iforward_end']['sum'] + row['iforward_wait']['duration']['sum'])
+                unique_nodes.add(sent_to)
+            unique_nodes.add(address)
+
+    if not unique_nodes:
+        if view_type == 'clients':
+            raise ValueError("No data available: None of the selected RPCs were found in the client-side data. This may mean these RPCs were not issued by the client, were filtered out, or do not exist for your current selection.")
+        else:
+            raise ValueError("No data available: None of the selected RPCs were found in the server-side data. This may mean these RPCs were not executed on the server, were filtered out, or do not exist for your current selection.")
+            
+    address_to_node_id = {}
+    for index, node in enumerate(list(unique_nodes)):
+        address_to_node_id[node] = index
+
+    edges = []
+    for key, value in f.items():
+        u, v = key
+        w = value
+        edges.append({'source': address_to_node_id[u], 'target': address_to_node_id[v], 'weight': w})
+
+    # Create the network dataframe for Chord
+    chord_df = pd.DataFrame(edges)
+
+    # Create the data dataframe for Chord opts
+    nodes_df = pd.DataFrame([
+        {
+            'index': address_to_node_id[node],
+            'index_name': node,
+            'index_color': i        
+        }
+        for i, node in enumerate(unique_nodes)
+    ])
+
+    dataset = hv.Dataset(nodes_df, 'index')
+
+    return hv.Chord((chord_df, dataset)).opts(
+        opts.Chord(
+            cmap='Category20',
+            edge_cmap='Category20',
+            node_color='index_color',
+            edge_color='source',
+            labels='index_name',
+            width=700,
+            height=700
+        )
+    ).opts(shared_axes=False)
 
 @debug_time
 def create_rpc_load_heatmap(stats, rpc_id_dict, rpc_list, view_type='clients'):

@@ -1,3 +1,67 @@
+"""
+Mochi Data Visualization - Dashboard Components
+
+This module provides the main dashboard UI and interactive components for visualizing RPC (Remote Procedure Call)
+performance data in distributed systems. It leverages Panel and HoloViews to create a user-friendly, interactive
+web dashboard for exploring Mochi performance statistics.
+
+DEVELOPMENT WORKFLOW:
+=====================
+- All graph visualizations are first prototyped and tested in a Jupyter notebook for rapid iteration and debugging.
+- Once a graph is working as intended, its logic is moved into a function in `plotting_functions.py`.
+- The dashboard GUI and interactive components are developed and tested in the `MochiDashboard` class (in this file).
+- The final step is to connect the plotting functions from `plotting_functions.py` to the dashboard components.
+
+This workflow allows for fast prototyping, easy debugging, and modular code organization.
+
+GENERAL METHODOLOGY:
+====================
+
+1. DASHBOARD STRUCTURE:
+    - The main class is `MochiDashboard`, which builds the dashboard layout and navigation.
+    - The dashboard is organized into sections: Overview, Process Analysis, Detailed Analysis, and Advanced Analysis.
+    - Each section is created by a dedicated method (e.g., `_create_overview_section`).
+
+2. DATA ACCESS & VISUALIZATION:
+    - The dashboard expects a `stats` object containing DataFrames (origin_rpc_df, target_rpc_df, bulk_transfer_df).
+    - Visualization functions (e.g., `create_graph_1`, `create_graph_2`, etc.) are imported from `plotting_functions.py`.
+    - Interactive widgets (dropdowns, buttons) allow users to select processes, metrics, and drill down into details. 
+
+3. STYLING & USER EXPERIENCE:
+    - Consistent style dictionaries (e.g., TITLE_STYLE, SECTION_STYLE) are used for a better look.
+
+4. INTERACTIVITY:
+    - Uses Panel's dependency system (`@pn.depends`) for dynamic updates based on user input.
+    - Tap and selection events allow users to click on bars or tables to explore deeper statistics.
+    - Navigation between main and per-RPC views is seamless and stateful.
+    - The <get_page> function is in charge of switching the views between the main page and the PER-RPC page.
+    - The <get_page> function is called everytime <self.trigger> is assigned a new value.
+
+EXTENDING THE DASHBOARD:
+========================
+
+To add a new section or visualization:
+    1. Create a new method in `MochiDashboard` for the section or feature.
+    2. Use or create new plotting functions in `plotting_functions.py` as needed.
+    3. Add new widgets or interactivity using Panel components.
+    4. Update the main layout in the constructor to include the new section.
+
+COMMON DATA STRUCTURES:
+=======================
+    - stats.origin_rpc_df: Multi-index DataFrame with client-side RPC data
+    - stats.target_rpc_df: Multi-index DataFrame with server-side RPC data
+    - stats.bulk_transfer_df: DataFrame with RDMA transfer data
+    - rpc_name_dict: Dict mapping RPC IDs to names
+    - rpc_id_dict: Dict mapping RPC names to IDs
+
+COMMON COMPONENTS:
+==================
+    - MochiDashboard: Main dashboard class
+    - _create_header, _create_overview_section, etc.: Section builder methods
+    - Panel widgets: Dropdowns, buttons, tables for interactivity
+    - Styling dicts: For consistent look and feel
+
+"""
 import panel as pn
 
 import holoviews as hv
@@ -128,7 +192,6 @@ class MochiDashboard():
     
     """ General Overview Section (Main Page)"""
     def _create_header(self):
-        """Create an engaging header with clear purpose"""
         return pn.Column(
             pn.pane.Markdown(
                 "# Mochi Performance Dashboard",
@@ -336,13 +399,15 @@ class MochiDashboard():
             name='Source Processes', 
             options=all_options, 
             size=8, 
-            width=300
+            width=300,
+            height=150,
         )
         target_select = pn.widgets.MultiSelect(
             name='Destination Processes', 
             options=all_options, 
             size=8, 
-            width=300
+            width=300,
+            height=150,
         )
         apply_button = pn.widgets.Button(
             name='Apply', 
