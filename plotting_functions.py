@@ -346,7 +346,7 @@ def create_graph_1(stats):
 
     aggregate_process_df = merged.groupby('address').agg('sum')
 
-    return aggregate_process_df['total_sum'].sort_values(ascending=False).hvplot.bar(xlabel='Address', ylabel='Total Time', title='Total RPC Call Time by Process', rot=45, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
+    return aggregate_process_df['total_sum'].sort_values(ascending=False).hvplot.bar(xlabel='Address', ylabel='Total Time', title='Total RPC Call Time by Process (Client Side)', rot=45, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
 
 @debug_time
 def create_graph_2(stats):
@@ -365,7 +365,7 @@ def create_graph_2(stats):
     df = stats.target_rpc_df
     aggregate_process_df = df['ult']['duration']['sum'].groupby('address').agg('sum')
 
-    return aggregate_process_df.sort_values(ascending=False).hvplot.bar(xlabel='Address', ylabel='Total Time', title='Total RPC Execution Time by Process', rot=45, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
+    return aggregate_process_df.sort_values(ascending=False).hvplot.bar(xlabel='Address', ylabel='Total Time', title='Total RPC Execution Time by Process (Server Side)', rot=45, height=500, width=1000).opts(default_tools=["pan"], shared_axes=False)
 
 @debug_time
 def create_graph_3(stats, address, rpc_name):
@@ -493,108 +493,154 @@ def create_graph_5(stats, metric, rpc_name):
 @debug_time
 def create_graph_6(stats, rpc_id_dict, rpc_list):
     """
-    Create a bar chart showing top 5 server RPCs by average execution time.
-    
-    This graph shows the top 5 server-side RPCs with the highest average execution time,
-    including max, average, and min execution times for each RPC.
-    
+    Create a scatter plot with error bars showing top 5 server RPCs by average execution time,
+    along with their min and max bounds.
+
     Args:
         stats: Statistics object containing target_rpc_df
         rpc_id_dict (dict): Mapping of RPC names to their IDs
         rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
-        
+
     Returns:
-        hv.Bars: HoloViews bar chart showing top 5 server RPCs by average execution time
-        
+        hv.Scatter: HoloViews scatter plot with error bars
+
     Raises:
         ValueError: If no data is available for the selected RPCs
     """
-    rpcs = []
-    rpcs_index = []
+    data = []
     not_found = []
+
     for src_address, dst_address, RPC in rpc_list:
         src, dest = get_src_dst_from_rpc_string(RPC)
 
         try:
-            df = stats.target_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.target_rpc_df.index.names.index('parent_rpc_id'), stats.target_rpc_df.index.names.index('rpc_id'), stats.target_rpc_df.index.names.index('received_from'), stats.target_rpc_df.index.names.index('address')])
+            df = stats.target_rpc_df.xs(
+                (rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address),
+                level=[
+                    stats.target_rpc_df.index.names.index('parent_rpc_id'),
+                    stats.target_rpc_df.index.names.index('rpc_id'),
+                    stats.target_rpc_df.index.names.index('received_from'),
+                    stats.target_rpc_df.index.names.index('address')
+                ]
+            )
         except:
             not_found.append((src_address, dst_address, RPC)) 
             continue
 
-        # file_name, provider_id and parent_provider_id are ignored when we aggregate everything up
         time_sum = df['handler']['duration']['sum'].sum()
         time_max = df['handler']['duration']['max'].max()
         time_min = df['handler']['duration']['min'].min()
         call_count = df['handler']['duration']['num'].sum()
         time_avg = time_sum / call_count
 
-        rpcs_index.append(f'{src} \n➔ {dest}\n<{dst_address}>' if src != 'None' else f'{dest}\n<{dst_address}>')
-        rpcs.append({'sum': time_sum, 'max': time_max, 'avg': time_avg, 'min': time_min, 'num': call_count})
-    
-    if rpcs:
-        df = pd.DataFrame(rpcs).set_index([rpcs_index])
-        return df[['max', 'avg', 'min']].sort_values(by='avg', ascending=False).head(5).hvplot.bar(
-            height=500, 
-            width=1000,
-            title='Top 5 Server RPCs by Average Execution Time',
-            xlabel='RPC Calls',
-            ylabel='Execution Time (seconds)'
-        ).opts(default_tools=["pan"], shared_axes=False)
-    else:
+        label = f'{src} ➔ {dest}\n<{dst_address}>' if src != 'None' else f'{dest}\n<{dst_address}>'
+        data.append({
+            'RPC': label,
+            'avg': time_avg,
+            'min': time_min,
+            'max': time_max,
+            'neg_offset': time_avg - time_min, # for error bar calculation
+            'pos_offset': time_max - time_avg,
+        })
+
+    if not data:
         raise ValueError("No data available: None of the selected RPCs were found in the server-side data. This may mean these RPCs were not executed on the server, were filtered out, or do not exist for your current selection.")
+
+    df = pd.DataFrame(data)
+    df = df.sort_values(by='avg', ascending=False).head(5).reset_index(drop=True)
+
+    scatter = hv.Scatter(df).opts(size=10, color='black', tools=['hover'])
+    errors = hv.ErrorBars(df, vdims=['avg', 'neg_offset', 'pos_offset'])
+
+    return (scatter * errors).opts(
+        height=500,
+        width=1000,
+        title='Top 5 Server RPCs: Avg Time with Min–Max Range',
+        xlabel='RPC',
+        ylabel='Execution Time (seconds)',
+        ylim=(0, None),
+        default_tools=["pan"],
+        shared_axes=False
+    )
 
 @debug_time
 def create_graph_7(stats, rpc_id_dict, rpc_list):
     """
-    Create a bar chart showing top 5 client RPCs by average call time.
-    
-    This graph shows the top 5 client-side RPCs with the highest average call time,
-    including max, average, and min call times for each RPC.
-    
+    Create a scatter plot with error bars showing top 5 client RPCs by average execution time,
+    along with their min and max bounds.
+
     Args:
-        stats: Statistics object containing origin_rpc_df
+        stats: Statistics object containing target_rpc_df
         rpc_id_dict (dict): Mapping of RPC names to their IDs
         rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
-        
+
     Returns:
-        hv.Bars: HoloViews bar chart showing top 5 client RPCs by average call time
-        
+        hv.Scatter: HoloViews scatter plot with error bars
+
     Raises:
         ValueError: If no data is available for the selected RPCs
     """
-    rpcs = []
-    rpcs_index = []
+    data = []
     not_found = []
+
     for src_address, dst_address, RPC in rpc_list:
         src, dest = get_src_dst_from_rpc_string(RPC)
-        
         try:
-            df = stats.origin_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.origin_rpc_df.index.names.index('parent_rpc_id'), stats.origin_rpc_df.index.names.index('rpc_id'), stats.origin_rpc_df.index.names.index('address'), stats.origin_rpc_df.index.names.index('sent_to')])
+            df = stats.origin_rpc_df.xs(
+                (rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address),
+                level=[stats.origin_rpc_df.index.names.index('parent_rpc_id'),
+                       stats.origin_rpc_df.index.names.index('rpc_id'),
+                       stats.origin_rpc_df.index.names.index('address'),
+                       stats.origin_rpc_df.index.names.index('sent_to')]
+            )
         except:
             not_found.append((src_address, dst_address, RPC)) 
             continue
-        
-        # file_name, provider_id and parent_provider_id are ignored when we aggregate everything up
-        time_sum = df['iforward']['duration']['sum'].sum() + df['iforward_wait']['relative_timestamp_from_iforward_end']['sum'].sum() + df['iforward_wait']['duration']['sum'].sum()
-        time_max = df['iforward']['duration']['max'].max() + df['iforward_wait']['relative_timestamp_from_iforward_end']['max'].max() + df['iforward_wait']['duration']['max'].max()
-        time_min = df['iforward']['duration']['min'].min() + df['iforward_wait']['relative_timestamp_from_iforward_end']['min'].min() + df['iforward_wait']['duration']['min'].min()
+
+        time_sum = df['iforward']['duration']['sum'].sum() + \
+                   df['iforward_wait']['relative_timestamp_from_iforward_end']['sum'].sum() + \
+                   df['iforward_wait']['duration']['sum'].sum()
+
+        time_max = df['iforward']['duration']['max'].max() + \
+                   df['iforward_wait']['relative_timestamp_from_iforward_end']['max'].max() + \
+                   df['iforward_wait']['duration']['max'].max()
+
+        time_min = df['iforward']['duration']['min'].min() + \
+                   df['iforward_wait']['relative_timestamp_from_iforward_end']['min'].min() + \
+                   df['iforward_wait']['duration']['min'].min()
+
         call_count = df['iforward']['duration']['num'].sum()
         time_avg = time_sum / call_count
 
-        rpcs_index.append(f'{src} \n➔ {dest}\n<{src_address}>' if src != 'None' else f'{dest}\n<{src_address}>')
-        rpcs.append({'sum': time_sum, 'max': time_max, 'avg': time_avg, 'min': time_min, 'num': call_count})
+        label = f'{src} ➔ {dest}\n<{src_address}>' if src != 'None' else f'{dest}\n<{src_address}>'
+        data.append({
+            'RPC': label,
+            'avg': time_avg,
+            'min': time_min,
+            'max': time_max,
+            'neg_offset': time_avg - time_min, # for error bar calculation
+            'pos_offset': time_max - time_avg,
+        })
 
-    if rpcs:
-        df = pd.DataFrame(rpcs).set_index([rpcs_index])
-        return df[['max', 'avg', 'min']].sort_values(by='avg', ascending=False).head(5).hvplot.bar(
-            height=500, 
-            width=1000,
-            title='Top 5 Client RPCs by Average Call Time',
-            xlabel='RPC Calls',
-            ylabel='Call Time (seconds)'
-        ).opts(default_tools=["pan"], shared_axes=False)
-    else:
+    if not data:
         raise ValueError("No data available: None of the selected RPCs were found in the client-side data. This may mean these RPCs were not issued by the client, were filtered out, or do not exist for your current selection.")
+
+    df = pd.DataFrame(data)
+    df = df.sort_values(by='avg', ascending=False).head(5).reset_index(drop=True)
+
+    scatter = hv.Scatter(df).opts(size=10, color='black', tools=['hover'])
+    errors = hv.ErrorBars(df, vdims=['avg', 'neg_offset', 'pos_offset'])
+
+    return (scatter * errors).opts(
+        height=500,
+        width=1000,
+        title='Top 5 Client RPCs: Avg Time with Min–Max Range',
+        xlabel='RPC',
+        ylabel='Call Time (seconds)',
+        ylim=(0, None),
+        default_tools=["pan"],
+        shared_axes=False
+    )
 
 @debug_time
 def create_graph_8(stats, rpc_id_dict, rpc_list):
@@ -675,7 +721,7 @@ def create_graph_9(stats, rpc_id_dict, rpc_list):
     Raises:
         ValueError: If no data is available for the selected RPCs
     """
-
+    
     functions_server = ['handler', 'ult', 'irespond', 'respond_cb', 'irespond_wait', 'set_output', 'get_input']
     aggregations = ['duration', 'duration', 'duration', 'duration', 'duration', 'duration', 'duration']
     try:
@@ -714,7 +760,7 @@ def create_graph_9(stats, rpc_id_dict, rpc_list):
     error_data = [(func, mean, std) for func, mean, std in zip(functions_server, mean_server, std_server)]
     error_plot = hv.ErrorBars(error_data, kdims=['Function'], vdims=['Mean Duration', 'Std Dev'])
 
-    return (bar_plot * error_plot).opts(shared_axes=False, default_tools=["pan"])
+    return (bar_plot * error_plot).opts(shared_axes=False, default_tools=["pan"], ylim=(0, None))
 
 @debug_time
 def create_graph_10(stats, rpc_id_dict, rpc_list):
@@ -774,7 +820,7 @@ def create_graph_10(stats, rpc_id_dict, rpc_list):
     error_data = [(func, mean, std) for func, mean, std in zip(functions_client, mean_client, std_server)]
     error_plot = hv.ErrorBars(error_data, kdims=['Function'], vdims=['Mean Duration', 'Std Dev'])
 
-    return (bar_plot * error_plot).opts(shared_axes=False, default_tools=["pan"])
+    return (bar_plot * error_plot).opts(shared_axes=False, default_tools=["pan"], ylim=(0, None))
 
 @debug_time
 def create_chord_graph(stats, rpc_id_dict, rpc_list, view_type='clients'):
