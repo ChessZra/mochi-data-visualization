@@ -60,6 +60,7 @@ EXTENDING THE CODEBASE:
 To add a new graph function:
 Example template:
 @debug_time
+
 def create_graph_X(stats, rpc_id_dict, rpc_list, **kwargs):
     1. Filter data based on rpc_list
     2. Aggregate data appropriately
@@ -94,7 +95,7 @@ from collections import Counter
 from holoviews import opts
 from mochi_perf.graph import OriginRPCGraph, TargetRPCGraph
 
-""" Helper Functions """
+""" Helper Functions / Decorators """
 def debug_time(func):
     """
     Simple timing decorator that measures and prints the execution time of decorated functions.
@@ -151,11 +152,15 @@ def get_all_addresses(stats):
     Returns:
         list: Sorted list of all unique addresses found in the data
     """
-    address1 = stats.origin_rpc_df.index.get_level_values('address')
-    address2 = stats.origin_rpc_df.index.get_level_values('sent_to')
-    address3 = stats.target_rpc_df.index.get_level_values('address')
-    address4 = stats.target_rpc_df.index.get_level_values('received_from')
-    return sorted(address1.union(address2).union(address3).union(address4).unique().to_list())
+    address1, address2, address3, address4 = set(), set(), set(), set()
+    if stats.origin_rpc_df is not None and not stats.origin_rpc_df.empty:
+        address1 = set(stats.origin_rpc_df.index.get_level_values('address'))
+        address2 = set(stats.origin_rpc_df.index.get_level_values('sent_to'))
+
+    if stats.target_rpc_df is not None and not stats.target_rpc_df.empty:
+        address3 = set(stats.target_rpc_df.index.get_level_values('address'))
+        address4 = set(stats.target_rpc_df.index.get_level_values('received_from'))
+    return sorted(list(address1 | address2 | address3 | address4))
 
 def get_mean_variance_from_rpcs_client(stats, rpc_id_dict, rpc_list, functions, aggregations):
     """
@@ -643,64 +648,67 @@ def create_graph_7(stats, rpc_id_dict, rpc_list):
     )
 
 @debug_time
-def create_graph_8(stats, rpc_id_dict, rpc_list):
+def create_graph_8(stats, rpc_id_dict, rpc_list, view_type):
     """
     Create a bar chart showing total time spent in each RPC step across all selected RPCs.
     
     This graph aggregates the total time spent in each step of the RPC process
-    (both client and server side) across all selected RPCs, helping identify bottlenecks.
+    across all selected RPCs, helping identify bottlenecks.
     
     Args:
         stats: Statistics object containing origin_rpc_df and target_rpc_df
         rpc_id_dict (dict): Mapping of RPC names to their IDs
         rpc_list (list): List of tuples (src_address, dst_address, RPC_string)
-        
+        view_type (string): which functions to graph depending on view_type
+
     Returns:
         hv.Bars: HoloViews bar chart showing total duration by RPC step
         
     Raises:
         ValueError: If no data is available for the selected RPCs
     """
-
-    functions_server = ['handler', 'ult', 'irespond', 'respond_cb', 'irespond_wait', 'set_output', 'get_input']
-    functions_client = ['iforward', 'forward_cb', 'iforward_wait', 'set_input', 'get_output']
-    values_server = [0] * len(functions_server)
-    values_client = [0] * len(functions_client)
+    if view_type == 'servers':
+        functions_server = ['handler', 'ult', 'irespond', 'respond_cb', 'irespond_wait', 'set_output', 'get_input']
+        values_server = [0] * len(functions_server)
+    else:
+        functions_client = ['iforward', 'forward_cb', 'iforward_wait', 'set_input', 'get_output']
+        values_client = [0] * len(functions_client)
     
     for src_address, dst_address, RPC in rpc_list:
         src, dest = get_src_dst_from_rpc_string(RPC)
 
-        try:
-            # Get RPC server-side
-            df = stats.target_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.target_rpc_df.index.names.index('parent_rpc_id'), stats.target_rpc_df.index.names.index('rpc_id'), stats.target_rpc_df.index.names.index('received_from'), stats.target_rpc_df.index.names.index('address')])
-            for index, func in enumerate(functions_server): # We are summing because there are still provider ID's
-                values_server[index] += df[func]['duration']['sum'].sum()
-        except:
-            pass
-
-        try:
-            # Get RPC client-side
-            df = stats.origin_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.origin_rpc_df.index.names.index('parent_rpc_id'), stats.origin_rpc_df.index.names.index('rpc_id'), stats.origin_rpc_df.index.names.index('address'), stats.origin_rpc_df.index.names.index('sent_to')])
-            for index, func in enumerate(functions_client):
-                values_client[index] += df[func]['duration']['sum'].sum()
-        except:
-            pass
-
-    origin_plot_df = pd.DataFrame({'Function': functions_client, 'Total Duration': values_client, 'color': '#1f77b4'}).sort_values(by='Total Duration', ascending=False)
-    target_plot_df = pd.DataFrame({'Function': functions_server, 'Total Duration': values_server, 'color':'#ff7f0e'}).sort_values(by='Total Duration', ascending=False)
-
+        if view_type == 'servers':
+            try:
+                # Get RPC server-side
+                df = stats.target_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.target_rpc_df.index.names.index('parent_rpc_id'), stats.target_rpc_df.index.names.index('rpc_id'), stats.target_rpc_df.index.names.index('received_from'), stats.target_rpc_df.index.names.index('address')])
+                for index, func in enumerate(functions_server): # We are summing because there are still provider ID's
+                    values_server[index] += df[func]['duration']['sum'].sum()
+            except:
+                pass
+        else:
+            try:
+                # Get RPC client-side
+                df = stats.origin_rpc_df.xs((rpc_id_dict[src], rpc_id_dict[dest], src_address, dst_address), level=[stats.origin_rpc_df.index.names.index('parent_rpc_id'), stats.origin_rpc_df.index.names.index('rpc_id'), stats.origin_rpc_df.index.names.index('address'), stats.origin_rpc_df.index.names.index('sent_to')])
+                for index, func in enumerate(functions_client):
+                    values_client[index] += df[func]['duration']['sum'].sum()
+            except:
+                pass
+            
     title = "Total Time Spent in Each RPC Step (Aggregated Across All Selected RPCs)"
     x_label = "RPC Step"
     y_label = "Total Duration (s, aggregated)"
 
-    if sum(values_client) and sum(values_server):
-        return pd.concat([origin_plot_df, target_plot_df]).sort_values(by='Total Duration', ascending=False).hvplot.bar(x='Function', y='Total Duration', title=title, rot=45, color='color', xlabel=x_label, ylabel=y_label, height=500, width=1000).opts(shared_axes=False, default_tools=["pan"]) 
-    elif sum(values_client):
-        return origin_plot_df.hvplot.bar(x='Function', y='Total Duration', title=title, rot=45, color='color', xlabel=x_label, ylabel=y_label, height=500, width=1000).opts(shared_axes=False, default_tools=["pan"]) 
-    elif sum(values_server):
+    if view_type == 'servers':
+        if sum(values_server) == 0:
+            raise ValueError("No data available: None of the selected RPCs were found in the server-side data. This may mean these RPCs were not executed on the server, were filtered out, or do not exist for your current selection.")
+        
+        target_plot_df = pd.DataFrame({'Function': functions_server, 'Total Duration': values_server, 'color':'#ff7f0e'}).sort_values(by='Total Duration', ascending=False)
         return target_plot_df.hvplot.bar(x='Function', y='Total Duration', title=title, rot=45, color='color', xlabel=x_label, ylabel=y_label, height=500, width=1000).opts(shared_axes=False, default_tools=["pan"]) 
     else:
-        raise ValueError("No data available: None of the selected RPCs were found in either the server-side or client-side data. This may mean these RPCs were not executed, were filtered out, or do not exist for your current selection.")
+        if sum(values_client) == 0:
+            raise ValueError("No data available: None of the selected RPCs were found in the client-side data. This may mean these RPCs were not issued by the client, were filtered out, or do not exist for your current selection.")
+        origin_plot_df = pd.DataFrame({'Function': functions_client, 'Total Duration': values_client, 'color': '#1f77b4'}).sort_values(by='Total Duration', ascending=False)
+        return origin_plot_df.hvplot.bar(x='Function', y='Total Duration', title=title, rot=45, color='color', xlabel=x_label, ylabel=y_label, height=500, width=1000).opts(shared_axes=False, default_tools=["pan"]) 
 
 @debug_time
 def create_graph_9(stats, rpc_id_dict, rpc_list):
@@ -906,7 +914,7 @@ def create_chord_graph(stats, rpc_id_dict, rpc_list, view_type='clients'):
             node_color='index_color',
             edge_color='source',
             labels='index_name',
-            width=800,
+            width=700,
             height=700
         )
     ).opts(shared_axes=False)
@@ -987,6 +995,7 @@ def create_per_rpc_svg_origin(stats, rpc_id_dict, rpc_list):
     Returns:
         str: SVG string representation of the client-side RPC timeline
     """
+    print(rpc_list)
     # Get mean and variance
     functions = ['iforward', 'forward_cb', 'iforward_wait', 'set_input', 'get_output']
     aggregations = ['duration', 'duration', 'duration', 'duration', 'duration']

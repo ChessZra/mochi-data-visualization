@@ -210,6 +210,23 @@ class MochiDashboard():
 
     def _create_overview_section(self, stats):
         """Create high-level system overview with user-friendly explanations"""
+
+        try:
+            graph_1_view = create_graph_1(stats)
+        except Exception as e:
+            graph_1_view = pn.pane.Markdown(
+                f"{str(e)}",
+                styles=HIGHLIGHT_STYLE
+            )
+
+        try:
+            graph_2_view = create_graph_2(stats)
+        except Exception as e:
+            graph_2_view = pn.pane.Markdown(
+                f"{str(e)}",
+                styles=HIGHLIGHT_STYLE
+            )
+
         return pn.Column(
             pn.pane.Markdown("## System Overview", styles=SECTION_STYLE),
             pn.pane.Markdown(
@@ -218,14 +235,14 @@ class MochiDashboard():
                 styles=DESCRIPTION_STYLE
             ),
             pn.Column(
-                create_graph_1(stats),
+                graph_1_view,
                 pn.pane.Markdown(
                     get_graph_1_description(),
                     styles=DESCRIPTION_STYLE
                 ),
             ),
             pn.Column(
-                create_graph_2(stats),
+                graph_2_view,
                 pn.pane.Markdown(
                     get_graph_2_description(),
                     styles=DESCRIPTION_STYLE
@@ -313,24 +330,40 @@ class MochiDashboard():
 
         @pn.depends(metric_dropdown)
         def get_visualization(metric_choice):
-            bars = create_graph_5(stats, metric_choice, self.rpc_name_dict)
-        
-            # Bar click callback
-            tap = Tap(source=bars)
-            @pn.depends(tap.param.x)
-            def on_bar_click(x):
-                if x is not None:
-                    self.trigger.value = x
-                return ''
-            
-            return pn.Column(
-                bars,
-                on_bar_click,
-                pn.pane.Markdown(
-                    get_graph_5_description() + " Click any bar to explore detailed statistics for that specific RPC call.",
-                    styles=DESCRIPTION_STYLE
+
+            try:
+                graph_5_view = create_graph_5(stats, metric_choice, self.rpc_name_dict)
+                # Only create the Tap stream if we have a valid plot
+                bars = graph_5_view
+                tap = Tap(source=bars)
+                
+                @pn.depends(tap.param.x)
+                def on_bar_click(x):
+                    if x is not None:
+                        self.trigger.value = x
+                    return ''
+                
+                return pn.Column(
+                    bars,
+                    on_bar_click,
+                    pn.pane.Markdown(
+                        get_graph_5_description() + " Click any bar to explore detailed statistics for that specific RPC call.",
+                        styles=DESCRIPTION_STYLE
+                    )
                 )
-            )
+                
+            except Exception as e:
+                # If graph creation fails, just return the error message without interactive features
+                return pn.Column(
+                    pn.pane.Markdown(
+                        f"{str(e)}",
+                        styles=HIGHLIGHT_STYLE
+                    ),
+                    pn.pane.Markdown(
+                        get_graph_5_description(),
+                        styles=DESCRIPTION_STYLE
+                    )
+                )
         
         return pn.Column(
             pn.pane.Markdown("## RPC Performance Analysis", styles=SECTION_STYLE),
@@ -482,6 +515,19 @@ class MochiDashboard():
             df = create_rpc_dataframe()
             table = pn.widgets.Tabulator(df, selectable=True, disabled=True, configuration={'selectableRowsRangeMode': 'click'})
             
+            # Add select all button
+            select_all_button = pn.widgets.Button(
+                name='Select All', 
+                button_type='default',
+                width=100
+            )
+            
+            def on_select_all_click(event):
+                # Select all rows in the table
+                table.selection = list(range(len(df)))
+            
+            select_all_button.on_click(on_select_all_click)
+            
             confirm_button = pn.widgets.Button( 
                 name='View Detailed Analysis', 
                 button_type='primary',
@@ -501,7 +547,7 @@ class MochiDashboard():
                         "**Selection Tips:** Click to select individual rows, Ctrl+click for multiple selections, or Shift+click for ranges",
                         styles=TIP_STYLE
                     ),
-                    confirm_button,
+                    pn.Row(select_all_button, confirm_button),
                     pn.pane.Markdown('*Note: You may notice provider IDs are included in the logs. In our case, RPC grouping ignores provider ID and parent provider ID for simplified analysis*',styles=SIDE_NOTE_STYLE),  
                     styles=BORDER_STYLE,
                     width=700
@@ -547,11 +593,27 @@ class MochiDashboard():
         )
 
     def _create_detailed_per_rpc_layout(self, stats, rpc_list):
+        """Create the detailed analysis layout with user-friendly explanations"""
+        return pn.Column(
+            pn.pane.Markdown("## Detailed Performance Analysis", styles=SECTION_STYLE),
+            pn.pane.Markdown(
+                f"Analyzing **{len(rpc_list)} unique RPC call(s)**. Here's what we found:",
+                styles=DESCRIPTION_STYLE
+            ),
+            
+            *self._create_detailed_per_rpc_server_layout(stats, rpc_list),
+            *self._create_detailed_per_rpc_client_layout(stats, rpc_list),
+
+            styles=BORDER_STYLE
+        ) 
+    
+    def _create_detailed_per_rpc_server_layout(self, stats, rpc_list):
+            
         try:
-            chord_graph_client_view = create_chord_graph(stats, self.rpc_id_dict, rpc_list, view_type='clients')
+            server_heatmap = create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, 'servers')
         except Exception as e:
-            chord_graph_client_view = pn.pane.Markdown(
-                f"{str(e)}",
+            server_heatmap = pn.pane.Markdown(
+                f"{str(e)}", 
                 styles=HIGHLIGHT_STYLE
             )
 
@@ -570,20 +632,15 @@ class MochiDashboard():
                 f"{str(e)}",
                 styles=HIGHLIGHT_STYLE
             )
+            
         try:
-            graph_7_view = create_graph_7(stats, self.rpc_id_dict, rpc_list)
-        except Exception as e:
-            graph_7_view = pn.pane.Markdown(
-                f"{str(e)}",
-                styles=HIGHLIGHT_STYLE
-            )
-        try:
-            graph_8_view = create_graph_8(stats, self.rpc_id_dict, rpc_list)
+            graph_8_view = create_graph_8(stats, self.rpc_id_dict, rpc_list, view_type='servers')
         except Exception as e:
             graph_8_view = pn.pane.Markdown(
                 f"{str(e)}",
                 styles=HIGHLIGHT_STYLE
             )
+
         try:
             graph_9_view = create_graph_9(stats, self.rpc_id_dict, rpc_list)
         except Exception as e:
@@ -591,6 +648,169 @@ class MochiDashboard():
                 f"{str(e)}",
                 styles=HIGHLIGHT_STYLE
             )
+
+        try:
+            svg_target = create_per_rpc_svg_target(stats, self.rpc_id_dict, rpc_list)
+        except Exception as e:
+            svg_target = pn.pane.Markdown(
+                f"{str(e)}",
+                width=450,
+                styles=HIGHLIGHT_STYLE
+            )
+
+        return [
+            # Let's examine the server-side first!
+            pn.pane.Markdown(
+                "## Server Analysis: Understanding Performance Bottlenecks",
+                styles=SUB_SECTION_STYLE
+            ),
+            pn.pane.Markdown(
+                "Now let's dive into the server-side perspective to understand where time is being spent processing requests. This analysis will help you identify which RPCs are consuming the most resources, how workload is distributed across your servers, and where potential bottlenecks might be occurring.",
+                styles=DESCRIPTION_STYLE
+            ), 
+
+            # Timing Breakdown Section (server-side)
+            pn.pane.Markdown("### Timing Breakdown", styles=SUB_SECTION_STYLE),
+            pn.pane.Markdown(
+                "Let's start by looking at the big picture. Each chord shows a connection between a client and a server. The color of the chord tells you which client made the request, and the thickness shows how much time the server spent working on it- the thicker the chord, the more work was done.",
+                styles=DESCRIPTION_STYLE
+            ),   
+            pn.Column(chord_graph_server_view, width=700, height=700),
+            pn.pane.Markdown(
+                "Are there any unusually thick connections between processes? You can go back to Step 1 to cherry-pick those processes to narrow it down later.",
+                styles=DESCRIPTION_STYLE,
+            ),
+            pn.pane.Markdown(
+                "Now, let's zoom in and start by looking at the performance of your selected RPCs in the server side. Which RPCs are taking the most time to execute?",
+                styles=DESCRIPTION_STYLE
+            ),     
+            graph_6_view,
+            pn.pane.Markdown(
+                get_graph_6_description(),
+                styles=DESCRIPTION_STYLE
+            ),
+
+            # Workload Distribution (server-side)
+            pn.pane.Markdown(
+                "How is the number of calls distributed across your processes? This helps you understand load balancing and identify potential bottlenecks.",
+                styles=DESCRIPTION_STYLE
+            ),
+
+            pn.pane.Markdown("### Who's Handling the Most Work?", styles=SUB_SECTION_STYLE),
+            pn.pane.Markdown(
+                "This heatmap shows which server processes are handling the most RPC requests. Look for potential overloaded servers.",
+                styles=DESCRIPTION_STYLE
+            ),
+            server_heatmap,
+            pn.pane.Markdown(
+                get_heatmap_description(view_type='servers'),
+                styles=DESCRIPTION_STYLE
+            ),
+        
+            # Remote Procedure Call (server-side)
+            pn.pane.Markdown("### Understanding the RPC Lifecycle", styles=SUB_SECTION_STYLE),
+            pn.pane.Markdown(
+                "RPCs go through several stages from initiation to completion. The diagram below shows the typical flow of the server RPC lifecycle:",
+                styles=DESCRIPTION_STYLE
+            ),
+            pn.Row(
+                pn.Column(
+                    pn.pane.Markdown(
+                        "**Server Side:** Receives the request, processes it, and sends back results",
+                        width=300,
+                        styles=DESCRIPTION_STYLE
+                    ),
+                    pn.pane.Markdown(
+                        "This flow helps you understand where time is being spent in your system.",
+                        width=300,
+                        styles=DESCRIPTION_STYLE
+                    ),
+                ),
+                pn.pane.SVG("./img/rpc-target.svg", width=300, height=400),
+            ),
+            
+            pn.pane.Markdown("### Your RPCs in Detail", styles=SUB_SECTION_STYLE),
+            pn.pane.Markdown(
+                "Now let's dive even deeper and see the steps for all the selected RPCs. These visualizations show the scaled timing of each step in your selected RPCs, helping you identify exactly where bottlenecks occur in your workflow.",
+                styles=DESCRIPTION_STYLE
+            ),
+  
+            pn.pane.Markdown(
+                "This visualization shows the timing breakdown of server-side steps for your selected RPCs. The segments show how the average time was spent in each phase of the server-side process.",
+                styles=DESCRIPTION_STYLE
+            ),
+
+            pn.Row(
+                pn.pane.Markdown(
+                    """
+                    Do you notice anything unusual? Watch for long get_input or set_output times- this means heavy data serialization, so consider bulk transfers. If ult.relative_timestamp_from_handler_start is high or inconsistent, you may have a scheduling delay- more threads or servers can help.
+                    """,
+                    width=400,
+                    styles=DESCRIPTION_STYLE
+                ),
+                svg_target,
+            ),
+
+            pn.pane.Markdown("### Where is Time Being Spent?", styles=SUB_SECTION_STYLE),
+            pn.pane.Markdown(
+                "This breakdown shows exactly where time is being consumed in your RPC workflow. Look for the tallest bars - those are your bottlenecks!",
+                styles=DESCRIPTION_STYLE
+            ),
+            graph_8_view,
+            pn.pane.Markdown(
+                get_graph_8_description(),
+                styles=DESCRIPTION_STYLE
+            ),
+
+            pn.pane.Markdown("### Performance Variability", styles=SUB_SECTION_STYLE),
+            pn.pane.Markdown(
+                "This chart show which functions have the most unpredictable performance. "
+                "High variability (large error bars) might indicate issues that need attention.",
+                styles=DESCRIPTION_STYLE
+            ),
+            graph_9_view,
+        
+            pn.pane.Markdown(
+                "**Analysis Tips:** Look for patterns in the data. Are certain steps consistently slow? "
+                "Do some RPCs show much more variability than others? These insights can guide your optimization efforts.",
+                styles=TIP_STYLE
+            ),
+        ]
+
+    def _create_detailed_per_rpc_client_layout(self, stats, rpc_list):
+            
+        try:
+            client_heatmap = create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, 'clients')
+        except Exception as e:
+            client_heatmap = pn.pane.Markdown(
+                f"{str(e)}", 
+                styles=HIGHLIGHT_STYLE
+            )
+            
+        try:    
+            chord_graph_client_view = create_chord_graph(stats, self.rpc_id_dict, rpc_list, view_type='clients')
+        except Exception as e:
+            chord_graph_client_view = pn.pane.Markdown(
+                f"{str(e)}",
+                styles=HIGHLIGHT_STYLE
+            )
+
+        try:
+            graph_7_view = create_graph_7(stats, self.rpc_id_dict, rpc_list)
+        except Exception as e:
+            graph_7_view = pn.pane.Markdown(
+                f"{str(e)}",
+                styles=HIGHLIGHT_STYLE
+            )
+
+        try:
+            graph_8_view = create_graph_8(stats, self.rpc_id_dict, rpc_list, view_type='clients')
+        except Exception as e:
+            graph_8_view = pn.pane.Markdown(
+                f"{str(e)}",
+                styles=HIGHLIGHT_STYLE
+            )
+
         try:
             graph_10_view = create_graph_10(stats, self.rpc_id_dict, rpc_list)
         except Exception as e:
@@ -608,51 +828,24 @@ class MochiDashboard():
                 styles=HIGHLIGHT_STYLE
             )
 
-        try:
-            svg_target = create_per_rpc_svg_target(stats, self.rpc_id_dict, rpc_list)
-        except Exception as e:
-            svg_target = pn.pane.Markdown(
-                f"{str(e)}",
-                width=450,
-                styles=HIGHLIGHT_STYLE
-            )
-
-        """Create the detailed analysis layout with user-friendly explanations"""
-        return pn.Column(
-            pn.pane.Markdown("## Detailed Performance Analysis", styles=SECTION_STYLE),
+        return [
+            # Let's examine the client-side first!
             pn.pane.Markdown(
-                f"Analyzing **{len(rpc_list)} unique RPC call(s)**. Here's what we found:",
-                styles=DESCRIPTION_STYLE
-            ),
-            
-            # Timing Breakdown Section (server-side)
-            pn.pane.Markdown("### Timing Breakdown (Server Side)", styles=SUB_SECTION_STYLE),
-            pn.pane.Markdown(
-                "Let's start by looking at the big picture. Each chord shows a connection between a client and a server. The color of the chord tells you which client made the request, and the thickness shows how much time the server spent working on it- the thicker the chord, the more work was done.",
-                styles=DESCRIPTION_STYLE
-            ),   
-            chord_graph_server_view,
-            pn.pane.Markdown(
-                "Are there any unusually thick connections between processes? You can go back to Step 1 to cherry-pick those processes to narrow it down later.",
-                styles=DESCRIPTION_STYLE,
+                "## Client Analysis: Understanding Request Patterns and Response Times",
+                styles=SUB_SECTION_STYLE
             ),
             pn.pane.Markdown(
-                "Now, let's zoom in and start by looking at the performance of your selected RPCs in the server side. Which RPCs are taking the most time to execute?",
+                "Now let's examine the client-side perspective to understand how requests are being initiated and how long clients are waiting for responses. This analysis will help you identify which RPCs are taking the longest from the client's viewpoint, understand request patterns across your client processes, and spot potential issues with network latency or client-side bottlenecks.",
                 styles=DESCRIPTION_STYLE
-            ),     
-            graph_6_view,
-            pn.pane.Markdown(
-                get_graph_6_description(),
-                styles=DESCRIPTION_STYLE
-            ),
+            ), 
 
             # Timing Breakdown Section (client-side)
-            pn.pane.Markdown("### Timing Breakdown (Client Side)", styles=SUB_SECTION_STYLE),
+            pn.pane.Markdown("### Timing Breakdown", styles=SUB_SECTION_STYLE),
             pn.pane.Markdown(
                 "Now let's switch to the client's perspective. Thicker chords mean the client spent more time on their requests.",
                 styles=DESCRIPTION_STYLE
             ), 
-            chord_graph_client_view,
+            pn.Column(chord_graph_client_view, width=700, height=700),
             pn.pane.Markdown(
                 "Are there any unusually thick connections between processes? Again, you can go back to Step 1 to cherry-pick those processes and narrow it down later.",
                 styles=DESCRIPTION_STYLE,
@@ -669,29 +862,33 @@ class MochiDashboard():
                 ),
             ),
 
-            # Workload Distribution Section
-            pn.pane.Markdown("### Calls Distribution", styles=SUB_SECTION_STYLE),
+            # Workload Distribution (client-side)
             pn.pane.Markdown(
                 "How is the number of calls distributed across your processes? This helps you understand load balancing and identify potential bottlenecks.",
                 styles=DESCRIPTION_STYLE
             ),
-            self._create_distribution_view(stats, rpc_list),
-
-            # Remote Procedure Call Section
-            pn.pane.Markdown("### Understanding RPC Lifecycle", styles=SUB_SECTION_STYLE),
+    
+            pn.pane.Markdown("### Who's Sending the Most Requests?", styles=SUB_SECTION_STYLE),
             pn.pane.Markdown(
-                "RPCs go through several stages from initiation to completion. The diagrams below show the typical flow:",
+                "This heatmap shows which client processes are making the most RPC calls.",
+                styles=DESCRIPTION_STYLE
+            ),
+            client_heatmap,
+            pn.pane.Markdown(
+                get_heatmap_description(view_type='clients'),
+                styles=DESCRIPTION_STYLE
+            ),
+    
+            # Remote Procedure Call (client-side)
+            pn.pane.Markdown("### Understanding the RPC Lifecycle", styles=SUB_SECTION_STYLE),
+            pn.pane.Markdown(
+                "RPCs go through several stages from initiation to completion. The diagram below shows the typical flow of the server RPC lifecycle:",
                 styles=DESCRIPTION_STYLE
             ),
             pn.Row(
                 pn.Column(
                     pn.pane.Markdown(
-                        "**Client Side (Left):** Initiates the RPC call and waits for response",
-                        width=300,
-                        styles=DESCRIPTION_STYLE
-                    ),
-                    pn.pane.Markdown(
-                        "**Server Side (Right):** Receives the request, processes it, and sends back results",
+                        "**Client Side:** Initiates the RPC call and waits for response",
                         width=300,
                         styles=DESCRIPTION_STYLE
                     ),
@@ -702,7 +899,6 @@ class MochiDashboard():
                     ),
                 ),
                 pn.pane.SVG("./img/rpc-origin.svg", width=300, height=400),
-                pn.pane.SVG("./img/rpc-target.svg", width=300, height=400),
             ),
             
             pn.pane.Markdown("### Your RPCs in Detail", styles=SUB_SECTION_STYLE),
@@ -710,41 +906,24 @@ class MochiDashboard():
                 "Now let's dive even deeper and see the steps for all the selected RPCs. These visualizations show the scaled timing of each step in your selected RPCs, helping you identify exactly where bottlenecks occur in your workflow.",
                 styles=DESCRIPTION_STYLE
             ),
-            pn.Row(
-                pn.Column(
-                    pn.pane.Markdown("#### Client-Side RPC Steps", styles=SUB_SECTION_STYLE),
-                    pn.pane.Markdown(
-                        "This visualization shows the timing breakdown of client-side steps for your selected RPCs. The segments show how the average time was spent in each phase of the client-side process.",
-                        width=450,
-                        styles=DESCRIPTION_STYLE
-                    ),
-                    svg_origin,
-                ),
-                pn.Column(
-                    pn.pane.Markdown("#### Server-Side RPC Steps", styles=SUB_SECTION_STYLE),
-                    pn.pane.Markdown(
-                        "This visualization shows the timing breakdown of server-side steps for your selected RPCs. The segments show how the average time was spent in each phase of the server-side process.",
-                        width=450,
-                        styles=DESCRIPTION_STYLE
-                    ),
-                    svg_target,
-                ),
-            ),
-
             pn.pane.Markdown(
-                """
-                Do you notice anything unusual? Watch for long set/get_input or set/get_output times- this means heavy data serialization, so consider bulk transfers. If iforward_wait is long but starts right after forwarding ends, it's likely a blocking call- try overlapping computation. If ult.relative_timestamp_from_handler_start is high or inconsistent, you may have a scheduling delay- more threads or servers can help.
-                """,
+                "This visualization shows the timing breakdown of client-side steps for your selected RPCs. The segments show how the average time was spent in each phase of the client-side process.",
                 styles=DESCRIPTION_STYLE
             ),
-
+            pn.Row(
+                pn.pane.Markdown(
+                    """
+                    Do you notice anything unusual? Watch for long set_input or get_output times- this means heavy data serialization, so consider bulk transfers. If iforward_wait is long but starts right after forwarding ends, it's likely a blocking call- try overlapping computation.
+                    """,
+                    width=400,
+                    styles=DESCRIPTION_STYLE
+                ),
+                svg_origin,
+            ),
+    
             pn.pane.Markdown("### Where is Time Being Spent?", styles=SUB_SECTION_STYLE),
             pn.pane.Markdown(
                 "This breakdown shows exactly where time is being consumed in your RPC workflow. Look for the tallest bars - those are your bottlenecks!",
-                styles=DESCRIPTION_STYLE
-            ),
-            pn.pane.Markdown(
-                "**Legend:** <span style='color:#1f77b4'>🔵 Client steps</span> &nbsp;&nbsp; <span style='color:#ff7f0e'>🟠 Server steps</span>", 
                 styles=DESCRIPTION_STYLE
             ),
             graph_8_view,
@@ -755,54 +934,14 @@ class MochiDashboard():
 
             pn.pane.Markdown("### Performance Variability", styles=SUB_SECTION_STYLE),
             pn.pane.Markdown(
-                "These charts show which functions have the most unpredictable performance. "
+                "This chart show which functions have the most unpredictable performance. "
                 "High variability (large error bars) might indicate issues that need attention.",
                 styles=DESCRIPTION_STYLE
             ),
-            graph_9_view,
             graph_10_view,
-            
             pn.pane.Markdown(
                 "**Analysis Tips:** Look for patterns in the data. Are certain steps consistently slow? "
                 "Do some RPCs show much more variability than others? These insights can guide your optimization efforts.",
                 styles=TIP_STYLE
             ),
-            styles=BORDER_STYLE
-        ) 
-   
-    def _create_distribution_view(self, stats, rpc_list):
-        """Create distribution view with user-friendly explanations"""
-        try:
-            client_heatmap = create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, 'clients')
-        except Exception as e:
-            client_heatmap = pn.pane.Markdown(f"{str(e)}", styles=HIGHLIGHT_STYLE)
-        try:
-            server_heatmap = create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, 'servers')
-        except Exception as e:
-            server_heatmap = pn.pane.Markdown(f"{str(e)}", styles=HIGHLIGHT_STYLE)
-        return pn.Column(
-            pn.Column(
-                pn.pane.Markdown("### Who's Sending the Most Requests?", styles=SUB_SECTION_STYLE),
-                pn.pane.Markdown(
-                    "This heatmap shows which client processes are making the most RPC calls.",
-                    styles=DESCRIPTION_STYLE
-                ),
-                client_heatmap,
-                pn.pane.Markdown(
-                    get_heatmap_description(view_type='clients'),
-                    styles=DESCRIPTION_STYLE
-                ),
-            ),
-            pn.Column(
-                pn.pane.Markdown("### Who's Handling the Most Work?", styles=SUB_SECTION_STYLE),
-                pn.pane.Markdown(
-                    "This heatmap shows which server processes are handling the most RPC requests. Look for potential overloaded servers.",
-                    styles=DESCRIPTION_STYLE
-                ),
-                server_heatmap,
-                pn.pane.Markdown(
-                    get_heatmap_description(view_type='servers'),
-                    styles=DESCRIPTION_STYLE
-                ),
-            )
-        )
+        ]
