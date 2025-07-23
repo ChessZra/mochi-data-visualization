@@ -62,10 +62,11 @@ COMMON COMPONENTS:
     - Styling dicts: For consistent look and feel
 
 """
+import pandas as pd
 import panel as pn
 
 from holoviews.streams import Tap
-from plotting_functions import *
+from plotting_functions import MochiPlotter
 
 TITLE_STYLE = {
     'font-size': '28px',
@@ -149,6 +150,8 @@ pn.extension('tabulator')
 
 class MochiDashboard():
     def __init__(self, stats):
+        self.plotter = MochiPlotter()
+
         self.rpc_name_dict = {65535: 'None'}
         self.rpc_id_dict = {'None': 65535}
 
@@ -173,9 +176,6 @@ class MochiDashboard():
             if not context or context == 'back_to_main_page':
                 print("Attempting to display main_page")
                 return main_page
-            elif context == 'per_rpc_analysis':
-                print("Attempting to display PER-RPC page")
-                return self._create_per_rpc_view(stats)
             else:
                 print("Attempting to display PER-RPC page")
                 return self._create_per_rpc_view(stats)
@@ -212,7 +212,7 @@ class MochiDashboard():
         """Create high-level system overview with user-friendly explanations"""
 
         try:
-            graph_1_view = create_graph_1(stats)
+            graph_1_view = self.plotter.create_graph_1(stats)
         except Exception as e:
             graph_1_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -220,7 +220,7 @@ class MochiDashboard():
             )
 
         try:
-            graph_2_view = create_graph_2(stats)
+            graph_2_view = self.plotter.create_graph_2(stats)
         except Exception as e:
             graph_2_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -237,14 +237,14 @@ class MochiDashboard():
             pn.Column(
                 graph_1_view,
                 pn.pane.Markdown(
-                    get_graph_1_description(),
+                    self.plotter.get_graph_1_description(),
                     styles=DESCRIPTION_STYLE
                 ),
             ),
             pn.Column(
                 graph_2_view,
                 pn.pane.Markdown(
-                    get_graph_2_description(),
+                    self.plotter.get_graph_2_description(),
                     styles=DESCRIPTION_STYLE
                 ),
             ),
@@ -260,7 +260,7 @@ class MochiDashboard():
         """Create interactive process analysis with guided exploration"""
         process_dropdown = pn.widgets.Select(
             name='Select a Process to Analyze', 
-            options=get_all_addresses(stats),
+            options=self.plotter.get_all_addresses(stats),
             width=400
         )
 
@@ -273,7 +273,7 @@ class MochiDashboard():
                 )
             
             try:
-                client_view = create_graph_3(stats, process_choice, self.rpc_name_dict)
+                client_view = self.plotter.create_graph_3(stats, process_choice, self.rpc_name_dict)
             except:
                 client_view = pn.pane.Markdown(
                     f"**No data available for {process_choice}** - This process may not have made any RPC calls.",
@@ -281,7 +281,7 @@ class MochiDashboard():
                 )
             
             try:
-                server_view = create_graph_4(stats, process_choice, self.rpc_name_dict)
+                server_view = self.plotter.create_graph_4(stats, process_choice, self.rpc_name_dict)
             except:
                 server_view = pn.pane.Markdown(
                     f"**No data available for {process_choice}** - This process may not have handled any RPC calls.",
@@ -293,7 +293,7 @@ class MochiDashboard():
                     pn.pane.Markdown("**As a Client** (RPCs it calls)", styles=SUB_SECTION_STYLE),
                     client_view,
                     pn.pane.Markdown(
-                        get_graph_3_description(),
+                        self.plotter.get_graph_3_description(),
                         styles=DESCRIPTION_STYLE
                     ),
                 ),
@@ -301,7 +301,7 @@ class MochiDashboard():
                     pn.pane.Markdown("**As a Server** (RPCs it handles)", styles=SUB_SECTION_STYLE),
                     server_view,
                     pn.pane.Markdown(
-                        get_graph_4_description(),
+                        self.plotter.get_graph_4_description(),
                         styles=DESCRIPTION_STYLE
                     ),
                 )
@@ -332,7 +332,7 @@ class MochiDashboard():
         def get_visualization(metric_choice):
 
             try:
-                graph_5_view = create_graph_5(stats, metric_choice, self.rpc_name_dict)
+                graph_5_view = self.plotter.create_graph_5(stats, metric_choice, self.rpc_name_dict)
                 # Only create the Tap stream if we have a valid plot
                 bars = graph_5_view
                 tap = Tap(source=bars)
@@ -347,7 +347,7 @@ class MochiDashboard():
                     bars,
                     on_bar_click,
                     pn.pane.Markdown(
-                        get_graph_5_description() + " Click any bar to explore detailed statistics for that specific RPC call.",
+                        self.plotter.get_graph_5_description() + " Click any bar to explore detailed statistics for that specific RPC call.",
                         styles=DESCRIPTION_STYLE
                     )
                 )
@@ -360,7 +360,7 @@ class MochiDashboard():
                         styles=HIGHLIGHT_STYLE
                     ),
                     pn.pane.Markdown(
-                        get_graph_5_description(),
+                        self.plotter.get_graph_5_description(),
                         styles=DESCRIPTION_STYLE
                     )
                 )
@@ -424,7 +424,7 @@ class MochiDashboard():
     def _create_per_rpc_view(self, stats):
         """Create the detailed RPC view with improved user guidance"""
         # Define components
-        all_options = get_all_addresses(stats)
+        all_options = self.plotter.get_all_addresses(stats)
         origin_select = pn.widgets.MultiSelect(
             name='Source Processes', 
             options=all_options, 
@@ -610,7 +610,7 @@ class MochiDashboard():
     def _create_detailed_per_rpc_server_layout(self, stats, rpc_list):
             
         try:
-            server_heatmap = create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, 'servers')
+            server_heatmap = self.plotter.create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, 'servers')
         except Exception as e:
             server_heatmap = pn.pane.Markdown(
                 f"{str(e)}", 
@@ -618,7 +618,7 @@ class MochiDashboard():
             )
 
         try:
-            chord_graph_server_view = create_chord_graph(stats, self.rpc_id_dict, rpc_list, view_type='servers')
+            chord_graph_server_view = self.plotter.create_chord_graph(stats, self.rpc_id_dict, rpc_list, view_type='servers')
         except Exception as e:
             chord_graph_server_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -626,7 +626,7 @@ class MochiDashboard():
             )
 
         try:
-            graph_6_view = create_graph_6(stats, self.rpc_id_dict, rpc_list)
+            graph_6_view = self.plotter.create_graph_6(stats, self.rpc_id_dict, rpc_list)
         except Exception as e:
             graph_6_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -634,7 +634,7 @@ class MochiDashboard():
             )
             
         try:
-            graph_8_view = create_graph_8(stats, self.rpc_id_dict, rpc_list, view_type='servers')
+            graph_8_view = self.plotter.create_graph_8(stats, self.rpc_id_dict, rpc_list, view_type='servers')
         except Exception as e:
             graph_8_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -642,7 +642,7 @@ class MochiDashboard():
             )
 
         try:
-            graph_9_view = create_graph_9(stats, self.rpc_id_dict, rpc_list)
+            graph_9_view = self.plotter.create_graph_9(stats, self.rpc_id_dict, rpc_list)
         except Exception as e:
             graph_9_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -650,7 +650,7 @@ class MochiDashboard():
             )
 
         try:
-            svg_target = create_per_rpc_svg_target(stats, self.rpc_id_dict, rpc_list)
+            svg_target = self.plotter.create_per_rpc_svg_target(stats, self.rpc_id_dict, rpc_list)
         except Exception as e:
             svg_target = pn.pane.Markdown(
                 f"{str(e)}",
@@ -686,7 +686,7 @@ class MochiDashboard():
             ),     
             graph_6_view,
             pn.pane.Markdown(
-                get_graph_6_description(),
+                self.plotter.get_graph_6_description(),
                 styles=DESCRIPTION_STYLE
             ),
 
@@ -703,7 +703,7 @@ class MochiDashboard():
             ),
             server_heatmap,
             pn.pane.Markdown(
-                get_heatmap_description(view_type='servers'),
+                self.plotter.get_heatmap_description(view_type='servers'),
                 styles=DESCRIPTION_STYLE
             ),
         
@@ -758,7 +758,7 @@ class MochiDashboard():
             ),
             graph_8_view,
             pn.pane.Markdown(
-                get_graph_8_description(),
+                self.plotter.get_graph_8_description(),
                 styles=DESCRIPTION_STYLE
             ),
 
@@ -780,7 +780,7 @@ class MochiDashboard():
     def _create_detailed_per_rpc_client_layout(self, stats, rpc_list):
             
         try:
-            client_heatmap = create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, 'clients')
+            client_heatmap = self.plotter.create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, 'clients')
         except Exception as e:
             client_heatmap = pn.pane.Markdown(
                 f"{str(e)}", 
@@ -788,7 +788,7 @@ class MochiDashboard():
             )
             
         try:    
-            chord_graph_client_view = create_chord_graph(stats, self.rpc_id_dict, rpc_list, view_type='clients')
+            chord_graph_client_view = self.plotter.create_chord_graph(stats, self.rpc_id_dict, rpc_list, view_type='clients')
         except Exception as e:
             chord_graph_client_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -796,7 +796,7 @@ class MochiDashboard():
             )
 
         try:
-            graph_7_view = create_graph_7(stats, self.rpc_id_dict, rpc_list)
+            graph_7_view = self.plotter.create_graph_7(stats, self.rpc_id_dict, rpc_list)
         except Exception as e:
             graph_7_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -804,7 +804,7 @@ class MochiDashboard():
             )
 
         try:
-            graph_8_view = create_graph_8(stats, self.rpc_id_dict, rpc_list, view_type='clients')
+            graph_8_view = self.plotter.create_graph_8(stats, self.rpc_id_dict, rpc_list, view_type='clients')
         except Exception as e:
             graph_8_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -812,7 +812,7 @@ class MochiDashboard():
             )
 
         try:
-            graph_10_view = create_graph_10(stats, self.rpc_id_dict, rpc_list)
+            graph_10_view = self.plotter.create_graph_10(stats, self.rpc_id_dict, rpc_list)
         except Exception as e:
             graph_10_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -820,7 +820,7 @@ class MochiDashboard():
             )
 
         try:
-            svg_origin = create_per_rpc_svg_origin(stats, self.rpc_id_dict, rpc_list)
+            svg_origin = self.plotter.create_per_rpc_svg_origin(stats, self.rpc_id_dict, rpc_list)
         except Exception as e:
             svg_origin = pn.pane.Markdown(
                 f"{str(e)}",
@@ -857,7 +857,7 @@ class MochiDashboard():
             pn.Column(
                 graph_7_view,
                 pn.pane.Markdown(
-                    get_graph_7_description(),
+                    self.plotter.get_graph_7_description(),
                     styles=DESCRIPTION_STYLE
                 ),
             ),
@@ -875,7 +875,7 @@ class MochiDashboard():
             ),
             client_heatmap,
             pn.pane.Markdown(
-                get_heatmap_description(view_type='clients'),
+                self.plotter.get_heatmap_description(view_type='clients'),
                 styles=DESCRIPTION_STYLE
             ),
     
@@ -928,7 +928,7 @@ class MochiDashboard():
             ),
             graph_8_view,
             pn.pane.Markdown(
-                get_graph_8_description(),
+                self.plotter.get_graph_8_description(),
                 styles=DESCRIPTION_STYLE
             ),
 

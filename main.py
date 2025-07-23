@@ -3,7 +3,7 @@ from mochi_perf.statistics import MochiStatistics
 from dashboard_components import MochiDashboard
 
 # Change to your mochi logs  
-PATH = './bulk-data/*.stats.json'
+PATH = './clean-data/*.stats.json'
 
 if __name__ == '__main__':    
     stats = MochiStatistics(enable_profiling=True)       
