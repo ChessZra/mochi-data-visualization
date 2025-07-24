@@ -141,7 +141,7 @@ class MochiStatistics:
             try:
                 # Check if file is empty before trying to parse JSON
                 if os.path.getsize(filename) == 0:
-                    print(f"Warning: Skipping empty file {filename}")
+                    # print(f"Warning: Skipping empty file {filename}")
                     if self.enable_profiling:
                         self.profiler_stats.files_skipped += 1
                     return
