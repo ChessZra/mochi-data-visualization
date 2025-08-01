@@ -25,7 +25,7 @@ source .venv/bin/activate
 ### Step 3: Install Dependencies
 
 ```bash
-pip install panel holoviews hvplot pandas pycairo ipython psutil
+pip install panel holoviews hvplot pandas pycairo ipython dask orjson dask[dataframe] dask[distributed]
 ```
 
 ## Usage
