@@ -11,7 +11,7 @@ Unimplemented dataframes:
 """
 
 import dask
-import json
+import orjson
 import pandas as pd
 import os
 import time
@@ -78,16 +78,16 @@ class MochiStatistics:
         if os.path.getsize(filename) == 0:
             return False
     
-        with open(filename, 'r') as f:
-            content = json.load(f)
+        with open(filename, 'rb') as f:
+            content = orjson.loads(f.read())
         rpcs = content['rpcs']
         progress_loop = content['progress_loop']
         address = content['address']
         basename = os.path.basename(filename)
 
-        # # Check if address field is empty
-        # if not address or address == '':
-        #     return False
+        # Check if address field is empty
+        if not address or address == '':
+            return False
 
         if section_name == 'origin':
             # Check if origin section exists
@@ -99,8 +99,7 @@ class MochiStatistics:
             rpcs = {k:v for k, v in rpcs.items() if section_name in v}
             if len(rpcs) == 0:
                 return False      
-            # Just because you have a 'target' section doesn't mean that it's 
-            # automatically a target file- it simply received a bulk rpc
+            # 'target' section also implies that it received a bulk rpc
             is_target_file = False
             for rpc in rpcs.values():
                 section = rpc[section_name]
@@ -119,8 +118,8 @@ class MochiStatistics:
     @staticmethod
     def _parse_file(filename: str, section_name: str):
         try:
-            with open(filename, 'r') as f:
-                content = json.load(f)
+            with open(filename, 'rb') as f:
+                content = orjson.loads(f.read())
             rpcs = content['rpcs']
             progress_loop = content['progress_loop']
             address = content['address']
@@ -177,6 +176,11 @@ class MochiStatistics:
         sorted_columns = sorted(columns.keys())
         sorted_column_data = {col: columns[col] for col in sorted_columns}
         pdf = pd.DataFrame(sorted_column_data)
+
+        # Ensure uint64 types to fill all ids
+        for col in ['rpc_id', 'parent_rpc_id', 'provider_id', 'parent_provider_id']:
+            pdf[('meta', '', col)] = pdf[('meta', '', col)].astype('uint64')
+            
         return pdf
     
     @staticmethod

@@ -46,21 +46,12 @@ To add a new section or visualization:
     3. Add new widgets or interactivity using Panel components.
     4. Update the main layout in the constructor to include the new section.
 
-COMMON DATA STRUCTURES:
-=======================
-    - stats.origin_rpc_df: Multi-index DataFrame with client-side RPC data
-    - stats.target_rpc_df: Multi-index DataFrame with server-side RPC data
-    - stats.bulk_transfer_df: DataFrame with RDMA transfer data
-    - rpc_name_dict: Dict mapping RPC IDs to names
-    - rpc_id_dict: Dict mapping RPC names to IDs
-
 COMMON COMPONENTS:
 ==================
     - MochiDashboard: Main dashboard class
     - _create_header, _create_overview_section, etc.: Section builder methods
     - Panel widgets: Dropdowns, buttons, tables for interactivity
     - Styling dicts: For consistent look and feel
-
 """
 import pandas as pd
 import panel as pn
@@ -150,22 +141,15 @@ pn.extension('tabulator')
 
 class MochiDashboard():
     def __init__(self, stats):
-        self.plotter = MochiPlotter()
-
-        self.rpc_name_dict = {65535: 'None'}
-        self.rpc_id_dict = {'None': 65535}
-
-        for df in [stats.origin_rpc_df, stats.target_rpc_df]:
-            for index in df.index:
-                self.rpc_name_dict[index[3]], self.rpc_id_dict[index[2]] = index[2], index[3]
-
+        self.plotter = MochiPlotter(stats)
+        
         # Create main dashboard with improved flow
         main_page = pn.Column(
             self._create_header(),
-            self._create_overview_section(stats),
-            self._create_process_analysis_section(stats),
-            self._create_detailed_analysis_section(stats),
-            self._create_advanced_analysis_section(stats),
+            self._create_overview_section(),
+            self._create_process_analysis_section(),
+            self._create_detailed_analysis_section(),
+            self._create_advanced_analysis_section(),
             styles={'max-width': '1200px', 'margin': '0 auto'}
         )
         
@@ -178,7 +162,7 @@ class MochiDashboard():
                 return main_page
             else:
                 print("Attempting to display PER-RPC page")
-                return self._create_per_rpc_view(stats)
+                return self._create_per_rpc_view()
         
         template = pn.template.MaterialTemplate(
             title="Mochi Performance Dashboard", 
@@ -208,11 +192,11 @@ class MochiDashboard():
             width=MAIN_PAGE_WIDTH
         )
 
-    def _create_overview_section(self, stats):
+    def _create_overview_section(self):
         """Create high-level system overview with user-friendly explanations"""
 
         try:
-            graph_1_view = self.plotter.create_graph_1(stats)
+            graph_1_view = self.plotter.create_graph_1()
         except Exception as e:
             graph_1_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -220,7 +204,7 @@ class MochiDashboard():
             )
 
         try:
-            graph_2_view = self.plotter.create_graph_2(stats)
+            graph_2_view = self.plotter.create_graph_2()
         except Exception as e:
             graph_2_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -237,14 +221,14 @@ class MochiDashboard():
             pn.Column(
                 graph_1_view,
                 pn.pane.Markdown(
-                    self.plotter.get_graph_1_description(),
+                    "**What this shows:** See which processes are the most active clients in your system. Higher bars mean a process is making more RPC calls to others. Use this to spot your busiest clients.",
                     styles=DESCRIPTION_STYLE
                 ),
             ),
             pn.Column(
                 graph_2_view,
                 pn.pane.Markdown(
-                    self.plotter.get_graph_2_description(),
+                    "**What this shows:** Find out which processes are doing the most work as servers. Higher bars mean a process is handling more RPC requests. This helps you spot overloaded servers.",
                     styles=DESCRIPTION_STYLE
                 ),
             ),
@@ -256,11 +240,11 @@ class MochiDashboard():
             width=MAIN_PAGE_WIDTH
         )
 
-    def _create_process_analysis_section(self, stats):
+    def _create_process_analysis_section(self):
         """Create interactive process analysis with guided exploration"""
         process_dropdown = pn.widgets.Select(
             name='Select a Process to Analyze', 
-            options=self.plotter.get_all_addresses(stats),
+            options=self.plotter.get_all_addresses(),
             width=400
         )
 
@@ -273,7 +257,7 @@ class MochiDashboard():
                 )
             
             try:
-                client_view = self.plotter.create_graph_3(stats, process_choice, self.rpc_name_dict)
+                client_view = self.plotter.create_graph_3(process_choice)
             except:
                 client_view = pn.pane.Markdown(
                     f"**No data available for {process_choice}** - This process may not have made any RPC calls.",
@@ -281,7 +265,7 @@ class MochiDashboard():
                 )
             
             try:
-                server_view = self.plotter.create_graph_4(stats, process_choice, self.rpc_name_dict)
+                server_view = self.plotter.create_graph_4(process_choice)
             except:
                 server_view = pn.pane.Markdown(
                     f"**No data available for {process_choice}** - This process may not have handled any RPC calls.",
@@ -293,7 +277,7 @@ class MochiDashboard():
                     pn.pane.Markdown("**As a Client** (RPCs it calls)", styles=SUB_SECTION_STYLE),
                     client_view,
                     pn.pane.Markdown(
-                        self.plotter.get_graph_3_description(),
+                        "**What this shows:** For the selected process, see how much time it spends calling each type of RPC. This helps you understand what kinds of work your client is doing most.",
                         styles=DESCRIPTION_STYLE
                     ),
                 ),
@@ -301,7 +285,7 @@ class MochiDashboard():
                     pn.pane.Markdown("**As a Server** (RPCs it handles)", styles=SUB_SECTION_STYLE),
                     server_view,
                     pn.pane.Markdown(
-                        self.plotter.get_graph_4_description(),
+                        "**What this shows:** For the selected process, see how much time it spends handling each type of incoming RPC. This reveals what kinds of requests your server is working on most.",
                         styles=DESCRIPTION_STYLE
                     ),
                 )
@@ -320,10 +304,10 @@ class MochiDashboard():
             width=MAIN_PAGE_WIDTH
         )
 
-    def _create_detailed_analysis_section(self, stats):
+    def _create_detailed_analysis_section(self):
         metric_dropdown = pn.widgets.Select(
             name='Performance Metric', 
-            options=['Server Execution Time', 'Client Call Time', 'Bulk Transfer Time', 'RDMA Data Transfer Size'], 
+            options=['Server Execution Time', 'Client Call Time'], 
             value='Server Execution Time',
             width=300
         )
@@ -332,7 +316,7 @@ class MochiDashboard():
         def get_visualization(metric_choice):
 
             try:
-                graph_5_view = self.plotter.create_graph_5(stats, metric_choice, self.rpc_name_dict)
+                graph_5_view = self.plotter.create_graph_5(metric_choice)
                 # Only create the Tap stream if we have a valid plot
                 bars = graph_5_view
                 tap = Tap(source=bars)
@@ -347,7 +331,7 @@ class MochiDashboard():
                     bars,
                     on_bar_click,
                     pn.pane.Markdown(
-                        self.plotter.get_graph_5_description() + " Click any bar to explore detailed statistics for that specific RPC call.",
+                    "**What this shows:** These are the top 5 RPCs using the most resources, based on your selected metric. Use this to quickly find which RPCs are slowing things down or using the most bandwidth. Click any bar to explore detailed statistics for that specific RPC call.",
                         styles=DESCRIPTION_STYLE
                     )
                 )
@@ -360,7 +344,7 @@ class MochiDashboard():
                         styles=HIGHLIGHT_STYLE
                     ),
                     pn.pane.Markdown(
-                        self.plotter.get_graph_5_description(),
+                    "**What this shows:** These are the top 5 RPCs using the most resources, based on your selected metric. Use this to quickly find which RPCs are slowing things down or using the most bandwidth.",
                         styles=DESCRIPTION_STYLE
                     )
                 )
@@ -369,7 +353,7 @@ class MochiDashboard():
             pn.pane.Markdown("## RPC Performance Analysis", styles=SECTION_STYLE),
             pn.pane.Markdown(
                 "Here you can see which RPC calls are using the most resources in your system. "
-                "Pick a metric (like execution time or transfer size) to see which operations are the most demanding.",
+                "Pick a metric (like execution time or client call time) to see which RPC is demanding for the clients and servers.",
                 styles=DESCRIPTION_STYLE
             ),
                 pn.Row(metric_dropdown),
@@ -383,7 +367,7 @@ class MochiDashboard():
             width=MAIN_PAGE_WIDTH
         )
 
-    def _create_advanced_analysis_section(self, stats):
+    def _create_advanced_analysis_section(self):
         """Create a section with a button to access the PER-RPC analysis page"""
         per_rpc_button = pn.widgets.Button(
             name='Advanced PER-RPC Analysis', 
@@ -421,10 +405,10 @@ class MochiDashboard():
         )
 
     """ PER-RPC Section """
-    def _create_per_rpc_view(self, stats):
+    def _create_per_rpc_view(self):
         """Create the detailed RPC view with improved user guidance"""
         # Define components
-        all_options = self.plotter.get_all_addresses(stats)
+        all_options = self.plotter.get_all_addresses()
         origin_select = pn.widgets.MultiSelect(
             name='Source Processes', 
             options=all_options, 
@@ -459,23 +443,6 @@ class MochiDashboard():
         def on_back_button_click(event):
             self.trigger.value = 'back_to_main_page'
 
-        def create_rpc_dataframe():
-            rpcs = []
-            for index, row in stats.origin_rpc_df.iterrows():
-                file, address, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, sent_to = index  
-                
-                if address in self.src_files and sent_to in self.dest_files:
-                    RPC = f'{self.rpc_name_dict[parent_rpc_id]} ➔ {self.rpc_name_dict[rpc_id]}' if self.rpc_name_dict[parent_rpc_id] != 'None' else self.rpc_name_dict[rpc_id]
-                    rpcs.append({'Source': address, 'Target': sent_to, 'RPC': RPC})
-
-            for index, row in stats.target_rpc_df.iterrows():
-                file, address, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, received_from = index    
-                if received_from in self.src_files and address in self.dest_files:
-                    RPC = f'{self.rpc_name_dict[parent_rpc_id]} ➔ {self.rpc_name_dict[rpc_id]}' if self.rpc_name_dict[parent_rpc_id] != 'None' else self.rpc_name_dict[rpc_id]
-                    rpcs.append({'Source': received_from, 'Target': address, 'RPC': RPC})
-            
-            return pd.DataFrame(rpcs).drop_duplicates().reset_index(drop=True)
-
         def origin_on_change(event):
             self.src_files = event.new
 
@@ -502,7 +469,7 @@ class MochiDashboard():
             right_layout.append(pn.Column(loading_indicator, pn.pane.Markdown("""Loading detailed analysis... (this may take a while)\n\nFirst run? It can take longer as we build the cache. Subsequent runs will be faster.""", styles=DESCRIPTION_STYLE)))
 
             # This method will take a while
-            detailed_rpc_layout = self._create_detailed_per_rpc_layout(stats, rpc_list)            
+            detailed_rpc_layout = self._create_detailed_per_rpc_layout(rpc_list)            
         
             right_layout.clear()
             right_layout.append(detailed_rpc_layout)
@@ -512,7 +479,7 @@ class MochiDashboard():
                 return
                         
             # Create table with better styling
-            df = create_rpc_dataframe()
+            df = self.plotter.create_rpc_table_dataframe(self.src_files, self.dest_files)
             table = pn.widgets.Tabulator(df, selectable=True, disabled=True, configuration={'selectableRowsRangeMode': 'click'})
             
             # Add select all button
@@ -592,7 +559,7 @@ class MochiDashboard():
             ),
         )
 
-    def _create_detailed_per_rpc_layout(self, stats, rpc_list):
+    def _create_detailed_per_rpc_layout(self, rpc_list):
         """Create the detailed analysis layout with user-friendly explanations"""
         return pn.Column(
             pn.pane.Markdown("## Detailed Performance Analysis", styles=SECTION_STYLE),
@@ -601,16 +568,16 @@ class MochiDashboard():
                 styles=DESCRIPTION_STYLE
             ),
             
-            *self._create_detailed_per_rpc_server_layout(stats, rpc_list),
-            *self._create_detailed_per_rpc_client_layout(stats, rpc_list),
+            *self._create_detailed_per_rpc_server_layout(rpc_list),
+            *self._create_detailed_per_rpc_client_layout(rpc_list),
 
             styles=BORDER_STYLE
         ) 
     
-    def _create_detailed_per_rpc_server_layout(self, stats, rpc_list):
+    def _create_detailed_per_rpc_server_layout(self, rpc_list):
             
         try:
-            server_heatmap = self.plotter.create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, 'servers')
+            server_heatmap = self.plotter.create_rpc_load_heatmap(rpc_list, 'servers')
         except Exception as e:
             server_heatmap = pn.pane.Markdown(
                 f"{str(e)}", 
@@ -618,7 +585,7 @@ class MochiDashboard():
             )
 
         try:
-            chord_graph_server_view = self.plotter.create_chord_graph(stats, self.rpc_id_dict, rpc_list, view_type='servers')
+            chord_graph_server_view = self.plotter.create_chord_graph(rpc_list, view_type='servers')
         except Exception as e:
             chord_graph_server_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -626,7 +593,7 @@ class MochiDashboard():
             )
 
         try:
-            graph_6_view = self.plotter.create_graph_6(stats, self.rpc_id_dict, rpc_list)
+            graph_6_view = self.plotter.create_graph_6(rpc_list)
         except Exception as e:
             graph_6_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -634,7 +601,7 @@ class MochiDashboard():
             )
             
         try:
-            graph_8_view = self.plotter.create_graph_8(stats, self.rpc_id_dict, rpc_list, view_type='servers')
+            graph_8_view = self.plotter.create_graph_8(rpc_list, view_type='servers')
         except Exception as e:
             graph_8_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -642,7 +609,7 @@ class MochiDashboard():
             )
 
         try:
-            graph_9_view = self.plotter.create_graph_9(stats, self.rpc_id_dict, rpc_list)
+            graph_9_view = self.plotter.create_graph_9(rpc_list)
         except Exception as e:
             graph_9_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -650,7 +617,7 @@ class MochiDashboard():
             )
 
         try:
-            svg_target = self.plotter.create_per_rpc_svg_target(stats, self.rpc_id_dict, rpc_list)
+            svg_target = self.plotter.create_per_rpc_svg_target(rpc_list)
         except Exception as e:
             svg_target = pn.pane.Markdown(
                 f"{str(e)}",
@@ -686,7 +653,7 @@ class MochiDashboard():
             ),     
             graph_6_view,
             pn.pane.Markdown(
-                self.plotter.get_graph_6_description(),
+                "**What this shows:** These are the top 5 server-side RPCs with the highest average execution time. For each, you can see the max, average, and min times. Use this to find slow server operations to optimize.",
                 styles=DESCRIPTION_STYLE
             ),
 
@@ -703,7 +670,7 @@ class MochiDashboard():
             ),
             server_heatmap,
             pn.pane.Markdown(
-                self.plotter.get_heatmap_description(view_type='servers'),
+                "**What this shows:** This heatmap shows which server processes are handling the most RPC requests and which RPC types are most common. Look for hotspots to find overloaded servers or popular RPCs.",
                 styles=DESCRIPTION_STYLE
             ),
         
@@ -758,7 +725,7 @@ class MochiDashboard():
             ),
             graph_8_view,
             pn.pane.Markdown(
-                self.plotter.get_graph_8_description(),
+                "**What this shows:** See how much total time is spent in each step of the RPC process, across all selected RPCs. Taller bars mean more time spent in that step. Focus on the tallest bars to find bottlenecks.",
                 styles=DESCRIPTION_STYLE
             ),
 
@@ -777,10 +744,10 @@ class MochiDashboard():
             ),
         ]
 
-    def _create_detailed_per_rpc_client_layout(self, stats, rpc_list):
+    def _create_detailed_per_rpc_client_layout(self, rpc_list):
             
         try:
-            client_heatmap = self.plotter.create_rpc_load_heatmap(stats, self.rpc_id_dict, rpc_list, 'clients')
+            client_heatmap = self.plotter.create_rpc_load_heatmap(rpc_list, 'clients')
         except Exception as e:
             client_heatmap = pn.pane.Markdown(
                 f"{str(e)}", 
@@ -788,7 +755,7 @@ class MochiDashboard():
             )
             
         try:    
-            chord_graph_client_view = self.plotter.create_chord_graph(stats, self.rpc_id_dict, rpc_list, view_type='clients')
+            chord_graph_client_view = self.plotter.create_chord_graph(rpc_list, view_type='clients')
         except Exception as e:
             chord_graph_client_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -796,7 +763,7 @@ class MochiDashboard():
             )
 
         try:
-            graph_7_view = self.plotter.create_graph_7(stats, self.rpc_id_dict, rpc_list)
+            graph_7_view = self.plotter.create_graph_7(rpc_list)
         except Exception as e:
             graph_7_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -804,7 +771,7 @@ class MochiDashboard():
             )
 
         try:
-            graph_8_view = self.plotter.create_graph_8(stats, self.rpc_id_dict, rpc_list, view_type='clients')
+            graph_8_view = self.plotter.create_graph_8(rpc_list, view_type='clients')
         except Exception as e:
             graph_8_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -812,7 +779,7 @@ class MochiDashboard():
             )
 
         try:
-            graph_10_view = self.plotter.create_graph_10(stats, self.rpc_id_dict, rpc_list)
+            graph_10_view = self.plotter.create_graph_10(rpc_list)
         except Exception as e:
             graph_10_view = pn.pane.Markdown(
                 f"{str(e)}",
@@ -820,7 +787,7 @@ class MochiDashboard():
             )
 
         try:
-            svg_origin = self.plotter.create_per_rpc_svg_origin(stats, self.rpc_id_dict, rpc_list)
+            svg_origin = self.plotter.create_per_rpc_svg_origin(rpc_list)
         except Exception as e:
             svg_origin = pn.pane.Markdown(
                 f"{str(e)}",
@@ -857,7 +824,7 @@ class MochiDashboard():
             pn.Column(
                 graph_7_view,
                 pn.pane.Markdown(
-                    self.plotter.get_graph_7_description(),
+                    "**What this shows:** These are the top 5 client-side RPCs with the highest average call time. For each, you can see the max, average, and min times. Use this to spot slow client operations or network delays.",
                     styles=DESCRIPTION_STYLE
                 ),
             ),
@@ -875,7 +842,7 @@ class MochiDashboard():
             ),
             client_heatmap,
             pn.pane.Markdown(
-                self.plotter.get_heatmap_description(view_type='clients'),
+                "**What this shows:** This heatmap lets you quickly spot which client processes are making the most RPC calls and which types of RPCs they use most often. Use this to find your busiest clients and see if the load is balanced.",
                 styles=DESCRIPTION_STYLE
             ),
     
@@ -928,7 +895,7 @@ class MochiDashboard():
             ),
             graph_8_view,
             pn.pane.Markdown(
-                self.plotter.get_graph_8_description(),
+                "**What this shows:** See how much total time is spent in each step of the RPC process, across all selected RPCs. Taller bars mean more time spent in that step. Focus on the tallest bars to find bottlenecks.",
                 styles=DESCRIPTION_STYLE
             ),
 
