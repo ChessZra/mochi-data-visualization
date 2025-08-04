@@ -27,12 +27,10 @@ class MochiStatistics:
         self.num_cores = num_cores
         self.origin_rpc_ddf = None
         self.target_rpc_ddf = None
-
         # Unused as of now- could be useful for future dashboard features
         self.bulk_create_ddf = None
         self.bulk_transfer_ddf = None
         self.progress_loop_ddf = None
-    
         if files:            
             start = time.time()
             self.add_files_optimized(files)
@@ -54,14 +52,11 @@ class MochiStatistics:
                 origin_files.append(f)
             if self._validate_file(f, 'target'):
                 target_files.append(f)
-
         def batch_files(file_list, batch_size):
             for i in range(0, len(file_list), batch_size):
                 yield file_list[i:i+batch_size]
-
         # Send tasks
         batch_size = max(1, ceil(len(origin_files) / self.num_cores))
-
         origin_tasks = [
             dask.delayed(lambda fs: pd.concat([MochiStatistics._parse_file(f, 'origin') for f in fs], axis=0))(batch)
             for batch in batch_files(origin_files, batch_size)
@@ -84,11 +79,9 @@ class MochiStatistics:
         progress_loop = content['progress_loop']
         address = content['address']
         basename = os.path.basename(filename)
-
         # Check if address field is empty
         if not address or address == '':
             return False
-
         if section_name == 'origin':
             # Check if origin section exists
             rpcs = {k:v for k, v in rpcs.items() if section_name in v}
@@ -111,7 +104,6 @@ class MochiStatistics:
                     is_target_file = True
             if not is_target_file:
                 return False
-            
         return True
 
     """ Static methods are used for serialization when passing it to dask.delayed via lambda """
@@ -124,7 +116,6 @@ class MochiStatistics:
             progress_loop = content['progress_loop']
             address = content['address']
             basename = os.path.basename(filename)
-
             if section_name == 'origin':
                 return MochiStatistics._make_rpc_stats_df(basename, address, rpcs, 'origin', 'sent_to')
             elif section_name == 'target':
@@ -138,7 +129,6 @@ class MochiStatistics:
                 return MochiStatistics._make_progress_loop_stats_df(basename, address, progress_loop)
             else:
                 raise Exception('Invalid option for _parse_file')
-
         except Exception as e:
             print(f"Error processing file {filename}: {str(e)}")
             return None
@@ -176,11 +166,9 @@ class MochiStatistics:
         sorted_columns = sorted(columns.keys())
         sorted_column_data = {col: columns[col] for col in sorted_columns}
         pdf = pd.DataFrame(sorted_column_data)
-
         # Ensure uint64 types to fill all ids
         for col in ['rpc_id', 'parent_rpc_id', 'provider_id', 'parent_provider_id']:
             pdf[('meta', '', col)] = pdf[('meta', '', col)].astype('uint64')
-            
         return pdf
     
     @staticmethod

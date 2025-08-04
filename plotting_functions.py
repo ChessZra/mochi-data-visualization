@@ -5,14 +5,14 @@ This module provides a comprehensive set of functions for visualizing RPC (Remot
 performance data. It follows a consistent methodology for data processing and visualization.
 """
 
+import dask.dataframe as dd
 import holoviews as hv
 import hvplot.pandas # For Series
-import time
 import pandas as pd
-import dask.dataframe as dd
-from functools import lru_cache
+import time
 
 from collections import Counter
+from functools import lru_cache
 from holoviews import opts
 from mochi_perf.graph import OriginRPCGraph, TargetRPCGraph
 
@@ -21,17 +21,13 @@ class MochiPlotter:
 
     def __init__(self, stats):
         self.stats = stats
-
         # The ordering of this index is expected:
         columns_to_move = [('meta', '', 'file'), ('meta', '', 'address'), ('meta', '', 'name'), ('meta', '', 'rpc_id'), ('meta', '', 'provider_id'), ('meta', '', 'parent_rpc_id'), ('meta', '', 'parent_provider_id'), ('meta', '', 'sent_to')]
         self.origin_rpc_df = self._convert_columns_to_multiindex(stats.origin_rpc_ddf.compute(), columns_to_move)
-
         columns_to_move = [('meta', '', 'file'), ('meta', '', 'address'), ('meta', '', 'name'), ('meta', '', 'rpc_id'), ('meta', '', 'provider_id'), ('meta', '', 'parent_rpc_id'), ('meta', '', 'parent_provider_id'), ('meta', '', 'received_from')]
         self.target_rpc_df = self._convert_columns_to_multiindex(stats.target_rpc_ddf.compute(), columns_to_move)
-
         self.rpc_name_dict = {65535: 'None'}
         self.rpc_id_dict = {'None': 65535}
-
         for df in [self.origin_rpc_df, self.target_rpc_df]:
             for index in df.index:
                 self.rpc_name_dict[index[3]], self.rpc_id_dict[index[2]] = index[2], index[3]
@@ -39,22 +35,17 @@ class MochiPlotter:
     def _convert_columns_to_multiindex(self, df, columns_to_move):
         # Create temporary column names to use with set_index
         temp_names = [f"temp_{i}" for i in range(len(columns_to_move))]
-        
         # Extract the columns and create a temporary DataFrame
         temp_df = df.copy()
         for i, col in enumerate(columns_to_move):
             temp_df[temp_names[i]] = df[col]
-        
         # Set these as index
         temp_df = temp_df.set_index(temp_names)
-        
         # Rename the index levels
         final_names = [col[-1] for col in columns_to_move]  # Use the last part of the tuple as name
         temp_df.index.names = final_names
-        
         # Remove original columns
         temp_df = temp_df.drop(columns=columns_to_move)
-        
         return temp_df
 
     @staticmethod
@@ -120,7 +111,6 @@ class MochiPlotter:
         if self.origin_rpc_df is not None and not self.origin_rpc_df.empty:
             address1 = set(self.origin_rpc_df.index.get_level_values('address'))
             address2 = set(self.origin_rpc_df.index.get_level_values('sent_to'))
-
         if self.target_rpc_df is not None and not self.target_rpc_df.empty:
             address3 = set(self.target_rpc_df.index.get_level_values('address'))
             address4 = set(self.target_rpc_df.index.get_level_values('received_from'))
@@ -136,17 +126,12 @@ class MochiPlotter:
         including iforward duration, wait time, and relative timestamps.
         """
         df = self.origin_rpc_df
-
         step_1 = df['iforward']['duration']['sum'].rename('iforward_sum')
         step_2 = df['iforward_wait']['relative_timestamp_from_iforward_end']['sum'].rename('iforward_wait_rel_sum')
         step_3 = df['iforward_wait']['duration']['sum'].rename('iforward_wait_duration_sum')
-
         merged = pd.concat([step_1, step_2, step_3], axis=1)
-
         merged['total_sum'] = merged.sum(axis=1)
-
         aggregate_process_df = merged.groupby('address').agg('sum')
-
         return aggregate_process_df['total_sum'].sort_values(ascending=False).hvplot.bar(xlabel='Address', ylabel='Total Time', title='Total RPC Call Time by Process (Client Side)', rot=45, height=500, width=1000).opts(shared_axes=False)
 
     @debug_time
@@ -159,7 +144,6 @@ class MochiPlotter:
         """
         df = self.target_rpc_df
         aggregate_process_df = df['ult']['duration']['sum'].groupby('address').agg('sum')
-
         return aggregate_process_df.sort_values(ascending=False).hvplot.bar(xlabel='Address', ylabel='Total Time', title='Total RPC Execution Time by Process (Server Side)', rot=45, height=500, width=1000).opts(shared_axes=False)
 
     @debug_time
@@ -172,20 +156,15 @@ class MochiPlotter:
         """
         df = self.origin_rpc_df
         filtered_process = df.xs(address, level='address')
-
         new_x_labels = []
         for file, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, sent_to in filtered_process.index:
             new_x_labels.append(self.wrap_label(f'{self.rpc_name_dict[parent_rpc_id]}\n➔ {self.rpc_name_dict[rpc_id]}', width=25) if parent_rpc_id != 65535 else self.wrap_label(f'{self.rpc_name_dict[rpc_id]}', width=25))
-
         filtered_process.index = new_x_labels
         step_1 = filtered_process['iforward']['duration']['sum'].rename('iforward_sum')
         step_2 = filtered_process['iforward_wait']['relative_timestamp_from_iforward_end']['sum'].rename('iforward_wait_rel_sum')
         step_3 = filtered_process['iforward_wait']['duration']['sum'].rename('iforward_wait_duration_sum')
-
         merged = pd.concat([step_1, step_2, step_3], axis=1)
-
         merged['total_sum'] = merged.sum(axis=1)
-
         return merged['total_sum'].groupby(level=0).agg('sum').sort_values(ascending=False).head(5).hvplot.bar(xlabel='Remote Procedure Calls (RPC)', ylabel='Time', title=f'Top 5 RPC Call Times for {address}', rot=0, height=500, width=1000).opts(shared_axes=False)
 
     @debug_time
@@ -198,13 +177,10 @@ class MochiPlotter:
         """   
         df = self.target_rpc_df
         filtered_process = df.xs(address, level='address')
-
         new_x_labels = []
         for file, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, sent_to in filtered_process.index:
             new_x_labels.append(self.wrap_label(f'{self.rpc_name_dict[parent_rpc_id]}\n➔ {self.rpc_name_dict[rpc_id]}', width=25) if parent_rpc_id != 65535 else self.wrap_label(f'{self.rpc_name_dict[rpc_id]}', width=25))
-
         filtered_process.index = new_x_labels
-
         return filtered_process['ult']['duration']['sum'].groupby(level=0).agg('sum').sort_values(ascending=False).head(5).hvplot.bar(xlabel='Remote Procedure Calls (RPC)', ylabel='Time', title=f'Top 5 RPC Execution Times for {address}', rot=0, height=500, width=1000).opts(shared_axes=False)
 
     @debug_time
@@ -228,21 +204,16 @@ class MochiPlotter:
                 'title': f'Top 5 Busiest RPCs (total time waiting across all clients)',
             },
         }
-        
         if metric not in metric_config:
             raise Exception('Exception, invalid metric passed')
-        
         config = metric_config[metric]
         df = config['df']
         title = config['title']
         ylabel = 'Size (in bytes)' if metric == 'RDMA Data Transfer Size' else 'Time (in seconds)'
-
         # Group by RPC (defined by parent_rpc_id -> rpc_id)
         df = df.groupby(["parent_rpc_id", "rpc_id"]).agg('sum')
-        
         # Create new index with RPC names
         df.index = [self.wrap_label(f'{self.rpc_name_dict[parent_id]}\n➔ {self.rpc_name_dict[rpc_id]}', width=25) if parent_id != 65535 else self.wrap_label(f'{self.rpc_name_dict[rpc_id]}', width=25) for parent_id, rpc_id in df.index]
-        
         # Create and return the plot
         return df.sort_values(ascending=False).head(5).hvplot.bar(title=title, xlabel='Remote Procedure Calls (RPC)', ylabel=ylabel, rot=0, height=500, width=1000).opts(shared_axes=False)
 
@@ -251,17 +222,14 @@ class MochiPlotter:
         rpcs = []
         for index, row in self.origin_rpc_df.iterrows():
             file, address, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, sent_to = index  
-            
             if address in src_files and sent_to in dest_files:
                 RPC = f'{self.rpc_name_dict[parent_rpc_id]} ➔ {self.rpc_name_dict[rpc_id]}' if self.rpc_name_dict[parent_rpc_id] != 'None' else self.rpc_name_dict[rpc_id]
                 rpcs.append({'Source': address, 'Target': sent_to, 'RPC': RPC})
-
         for index, row in self.target_rpc_df.iterrows():
             file, address, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, received_from = index    
             if received_from in src_files and address in dest_files:
                 RPC = f'{self.rpc_name_dict[parent_rpc_id]} ➔ {self.rpc_name_dict[rpc_id]}' if self.rpc_name_dict[parent_rpc_id] != 'None' else self.rpc_name_dict[rpc_id]
                 rpcs.append({'Source': received_from, 'Target': address, 'RPC': RPC})
-        
         return pd.DataFrame(rpcs).drop_duplicates().reset_index(drop=True)
 
     @debug_time
@@ -272,7 +240,6 @@ class MochiPlotter:
         """
         # Step 1: Get filtered data using the modular function
         filtered_df = self._get_filtered_rpc_data(rpc_list, 'servers')
-        
         # Step 2: Add RPC labels for grouping
         labels = []
         for _, row in filtered_df.iterrows():
@@ -280,15 +247,11 @@ class MochiPlotter:
             dst_address = row[('meta', '', 'address')]
             parent_rpc_id = row[('meta', '', 'parent_rpc_id')]
             rpc_id = row[('meta', '', 'rpc_id')]
-            
             src_name = self.rpc_name_dict[parent_rpc_id]
             dest_name = self.rpc_name_dict[rpc_id]
-            
             label = f'{src_name} ➔ {dest_name}\n<{dst_address}>' if src_name != 'None' else f'{dest_name}\n<{dst_address}>'
             labels.append(label)
-        
         filtered_df['rpc_label'] = labels
-        
         # Step 3: Group by RPC label and calculate statistics
         grouped = filtered_df.groupby('rpc_label').agg({
             ('handler', 'duration', 'sum'): 'sum',
@@ -296,17 +259,14 @@ class MochiPlotter:
             ('handler', 'duration', 'min'): 'min',
             ('handler', 'duration', 'num'): 'sum'
         })
-        
         # Filter out rows where call_count is 0 and build result data
         valid_data = grouped[grouped[('handler', 'duration', 'num')] > 0]
-        
         data = []
         for rpc_label, row in valid_data.iterrows():
             time_sum = row[('handler', 'duration', 'sum')]
             time_max = row[('handler', 'duration', 'max')]
             time_min = row[('handler', 'duration', 'min')]
             call_count = row[('handler', 'duration', 'num')]
-            
             time_avg = time_sum / call_count
             data.append({
                 'RPC': rpc_label,
@@ -316,17 +276,13 @@ class MochiPlotter:
                 'neg_offset': time_avg - time_min,
                 'pos_offset': time_max - time_avg,
             })
-        
         if not data:
             raise ValueError("No data available: None of the selected RPCs were found in the server-side data. This may mean these RPCs were not executed on the server, were filtered out, or do not exist for your current selection.")
-
         # Step 4: Create visualization (unchanged)
         df = pd.DataFrame(data)
         df = df.sort_values(by='avg', ascending=False).head(5).reset_index(drop=True)
-
         scatter = hv.Scatter(df).opts(size=10, color='black', tools=['hover'])
         errors = hv.ErrorBars(df, vdims=['avg', 'neg_offset', 'pos_offset'])
-
         return (scatter * errors).opts(
             height=500,
             width=1000,
@@ -346,7 +302,6 @@ class MochiPlotter:
         """
         # Step 1: Get filtered data using the modular function
         filtered_df = self._get_filtered_rpc_data(rpc_list, 'clients')
-        
         # Step 2: Add RPC labels (unchanged)
         start = time.time()
         labels = []
@@ -355,15 +310,11 @@ class MochiPlotter:
             dst_address = row[('meta', '', 'sent_to')]
             parent_rpc_id = row[('meta', '', 'parent_rpc_id')]
             rpc_id = row[('meta', '', 'rpc_id')]
-            
             src_name = self.rpc_name_dict[parent_rpc_id]
             dest_name = self.rpc_name_dict[rpc_id]
-
             label = f'{src_name} ➔ {dest_name}\n<{src_address}>' if src_name != 'None' else f'{dest_name}\n<{src_address}>'
             labels.append(label)
-            
         filtered_df['rpc_label'] = labels
-        
         # Step 3: Group by RPC label and calculate statistics
         grouped = filtered_df.groupby('rpc_label').agg({
             ('iforward', 'duration', 'sum'): 'sum',
@@ -377,7 +328,6 @@ class MochiPlotter:
             ('iforward_wait', 'duration', 'min'): 'min',
             ('iforward', 'duration', 'num'): 'sum'
         })
-        
         # Convert grouped results back to the same data structure as before
         data = []
         for rpc_label, row in grouped.iterrows():
@@ -405,17 +355,13 @@ class MochiPlotter:
                     'neg_offset': time_avg - time_min,
                     'pos_offset': time_max - time_avg,
                 })
-        
         if not data:
             raise ValueError("No data available: None of the selected RPCs were found in the client-side data. This may mean these RPCs were not issued by the client, were filtered out, or do not exist for your current selection.")
-
         # Step 4: Create visualization
         df = pd.DataFrame(data)
         df = df.sort_values(by='avg', ascending=False).head(5).reset_index(drop=True)
-
         scatter = hv.Scatter(df).opts(size=10, color='black', tools=['hover'])
         errors = hv.ErrorBars(df, vdims=['avg', 'neg_offset', 'pos_offset'])
-
         return (scatter * errors).opts(
             height=500,
             width=1000,
@@ -443,10 +389,8 @@ class MochiPlotter:
             functions = ['iforward', 'forward_cb', 'iforward_wait', 'set_input', 'get_output']
             color = '#1f77b4'
             error_msg = "No data available: None of the selected RPCs were found in the client-side data. This may mean these RPCs were not issued by the client, were filtered out, or do not exist for your current selection."
-
         # Step 1: Get filtered data using the modular function
         filtered_df = self._get_filtered_rpc_data(rpc_list, view_type)
-        
         # Step 2: Calculate total duration for each function
         values = []
         for func in functions:
@@ -456,21 +400,17 @@ class MochiPlotter:
             except KeyError:
                 # Function might not exist in the data
                 values.append(0)
-
         if sum(values) == 0:
             raise ValueError(error_msg)
-
         # Step 3: Create visualization
         plot_df = pd.DataFrame({
             'Function': functions, 
             'Total Duration': values, 
             'color': color
         }).sort_values(by='Total Duration', ascending=False)
-
         title = "Total Time Spent in Each RPC Step (Aggregated Across All Selected RPCs)"
         x_label = "RPC Step"
         y_label = "Total Duration (s, aggregated)"
-
         return plot_df.hvplot.bar(
             x='Function', 
             y='Total Duration', 
@@ -491,19 +431,15 @@ class MochiPlotter:
         This graph shows the mean duration and standard deviation for each server-side
         RPC function step, with error bars indicating the variability in execution times.
         """
-        
         functions_server = ['handler', 'ult', 'irespond', 'respond_cb', 'irespond_wait', 'set_output', 'get_input']
         aggregations = ['duration', 'duration', 'duration', 'duration', 'duration', 'duration', 'duration']
         try:
             mean_server, var_server = self._get_rpc_mean_and_variance_per_step(rpc_list, 'server', functions_server, aggregations)
         except ValueError as e:
             raise ValueError(str(e))  # throw it again, loud and proud
-
         std_server = [v ** 0.5 for v in var_server]
-
         # Color for bars (can also be a colormap or hex list)
         colors = ['#ff7f0e'] * len(functions_server)
-
         # Create the base DataFrame
         target_plot_df = pd.DataFrame({
             'Function': functions_server,
@@ -511,7 +447,6 @@ class MochiPlotter:
             'Std Dev': std_server,
             'color': colors
         }).sort_values(by='Mean Duration', ascending=False)
-
         # Build the bar chart
         bar_plot = target_plot_df.hvplot.bar(
             x='Function',
@@ -525,11 +460,9 @@ class MochiPlotter:
             width=1000,
             hover_cols=['Std Dev']
         )
-        
         # Build the error bars using HoloViews
         error_data = [(func, mean, std) for func, mean, std in zip(functions_server, mean_server, std_server)]
         error_plot = hv.ErrorBars(error_data, kdims=['Function'], vdims=['Mean Duration', 'Std Dev'])
-
         return (bar_plot * error_plot).opts(shared_axes=False, default_tools=["pan"], ylim=(0, None))
 
     @debug_time
@@ -540,19 +473,15 @@ class MochiPlotter:
         This graph shows the mean duration and standard deviation for each client-side
         RPC function step, with error bars indicating the variability in call times.
         """
-
         functions_client = ['iforward', 'forward_cb', 'iforward_wait', 'set_input', 'get_output']
         aggregations = ['duration', 'duration', 'duration', 'duration', 'duration']
         try:
             mean_client, var_client = self._get_rpc_mean_and_variance_per_step(rpc_list, 'client', functions_client, aggregations)
         except ValueError as e:
             raise ValueError(str(e))  # throw it again, loud and proud
-        
         std_server = [v ** 0.5 for v in var_client]
-
         # Color for bars 
         colors = ['#1f77b4'] * len(functions_client)
-
         # Create the base DataFrame
         origin_plot_df = pd.DataFrame({
             'Function': functions_client,
@@ -560,7 +489,6 @@ class MochiPlotter:
             'Std Dev': std_server,
             'color': colors
         }).sort_values(by='Mean Duration', ascending=False)
-
         # Build the bar chart
         bar_plot = origin_plot_df.hvplot.bar(
             x='Function',
@@ -574,11 +502,9 @@ class MochiPlotter:
             width=1000,
             hover_cols=['Std Dev']
         )
-
         # Build the error bars using HoloViews
         error_data = [(func, mean, std) for func, mean, std in zip(functions_client, mean_client, std_server)]
         error_plot = hv.ErrorBars(error_data, kdims=['Function'], vdims=['Mean Duration', 'Std Dev'])
-
         return (bar_plot * error_plot).opts(shared_axes=False, default_tools=["pan"], ylim=(0, None))
 
     @debug_time
@@ -593,14 +519,11 @@ class MochiPlotter:
             error_msg = "No data available: None of the selected RPCs were found in the client-side data. This may mean these RPCs were not issued by the client, were filtered out, or do not exist for your current selection."
         else:  # view_type == 'servers'
             error_msg = "No data available: None of the selected RPCs were found in the server-side data. This may mean these RPCs were not executed on the server, were filtered out, or do not exist for your current selection."
-
         # Step 1: Get filtered data using the modular function
         filtered_df = self._get_filtered_rpc_data(rpc_list, view_type)
-        
         # Step 2: Build communication patterns and weights
         f = Counter()  # (src, dest): weight
         unique_nodes = set()
-
         for _, row in filtered_df.iterrows():
             if view_type == 'servers':
                 # For servers: communication is from received_from to address
@@ -622,20 +545,16 @@ class MochiPlotter:
                             row[('iforward_wait', 'duration', 'sum')])
                 except KeyError:
                     weight = 0
-            
             if weight > 0:  # Only add if there's actual communication
                 f[(src, dest)] += weight
                 unique_nodes.add(src)
                 unique_nodes.add(dest)
-
         if not unique_nodes:
             raise ValueError(error_msg)
-                
         # Step 3: Create node mapping
         address_to_node_id = {}
         for index, node in enumerate(list(unique_nodes)):
             address_to_node_id[node] = index
-
         # Step 4: Create edges
         edges = []
         for (u, v), w in f.items():
@@ -644,10 +563,8 @@ class MochiPlotter:
                 'target': address_to_node_id[v], 
                 'weight': w
             })
-
         # Step 5: Create visualization
         chord_df = pd.DataFrame(edges)  
-
         nodes_df = pd.DataFrame([
             {
                 'index': address_to_node_id[node],
@@ -656,9 +573,7 @@ class MochiPlotter:
             }
             for i, node in enumerate(unique_nodes)
         ])
-
         dataset = hv.Dataset(nodes_df, 'index')
-
         return hv.Chord((chord_df, dataset)).opts(
             opts.Chord(
                 cmap='Category20',
@@ -685,18 +600,14 @@ class MochiPlotter:
         else:  # view_type == 'servers'
             count_col = ('handler', 'duration', 'num')
             error_msg = "No data available: None of the selected RPCs were found in the server-side data for the heatmap. This may mean these RPCs were not recorded, were filtered out, or do not exist for your current selection."
-
         # Step 1: Get filtered data using the modular function
         filtered_df = self._get_filtered_rpc_data(rpc_list, view_type)
-        
         # Step 2: Build the heatmap data directly without modifying the DataFrame
         rpcs = []
         for _, row in filtered_df.iterrows():
             rpc_id = row[('meta', '', 'rpc_id')]
-            
             rpc_name = self.rpc_name_dict[rpc_id]
             address = row[('meta', '', 'address')]
-            
             try:
                 num_calls = row[count_col]
                 if num_calls > 0:  # Only include if there are actual calls
@@ -708,25 +619,19 @@ class MochiPlotter:
             except KeyError:
                 # Column might not exist, skip this row
                 continue
-
         if not rpcs:
             raise ValueError(error_msg)
-        
         # Step 3: Create and process the DataFrame for heatmap
         df = pd.DataFrame(rpcs).set_index(['name', 'address']).groupby(['name', 'address']).sum()['num']        
         df_unstacked = df.unstack(fill_value=0)
-
         df_unstacked.index.name = 'RPC Type'
         df_unstacked.columns.name = f'{view_type.capitalize()}'
-
         # Sort rows (RPC types) by total activity descending
         row_sums = df_unstacked.sum(axis=1)
         df_unstacked = df_unstacked.loc[row_sums.sort_values(ascending=True).index]
-
         # Sort columns (addresses) by total activity descending
         col_sums = df_unstacked.sum(axis=0)
         df_unstacked = df_unstacked.loc[:, col_sums.sort_values(ascending=False).index]
-
         # Step 4: Create visualization 
         heatmap = df_unstacked.hvplot.heatmap(
             title=f'RPC Load Distribution by {view_type.capitalize()}',
@@ -753,29 +658,24 @@ class MochiPlotter:
         functions = ['iforward', 'forward_cb', 'iforward_wait', 'set_input', 'get_output']
         aggregations = ['duration', 'duration', 'duration', 'duration', 'duration']
         means, vars = self._get_rpc_mean_and_variance_per_step(rpc_list, 'client', functions, aggregations)
-
         iforward_duration = means[0]
         forward_cb_duration = means[1]
         wait_duration = means[2]
         set_input_duration = means[3]
         get_output_duration = means[4]
-
         functions = ['iforward', 'set_input', 'iforward_wait', 'forward_cb', 'get_output']
         aggregations = ['relative_timestamp_from_create', 'relative_timestamp_from_iforward_start', 'relative_timestamp_from_iforward_end', 'relative_timestamp_from_iforward_start', 'relative_timestamp_from_wait_end']
         means, vars = self._get_rpc_mean_and_variance_per_step(rpc_list, 'client', functions, aggregations)
-
         iforward_relative_create = means[0]
         set_input_relative_iforward_start = means[1]
         wait_relative_iforward_end = means[2]
         forward_cb_relative_iforward_start = means[3]
         get_output_relative_wait_end = means[4]
-
         iforward_start = iforward_relative_create
         set_input_start = iforward_start + set_input_relative_iforward_start
         wait_start = iforward_start + iforward_duration + wait_relative_iforward_end
         forward_cb_start = iforward_start + forward_cb_relative_iforward_start
         get_output_start = wait_start + wait_duration + get_output_relative_wait_end
-
         total_duration = max(
             iforward_start + iforward_duration,
             set_input_start + set_input_duration,
@@ -783,7 +683,6 @@ class MochiPlotter:
             forward_cb_start + forward_cb_duration,
             get_output_start + get_output_duration,
         )
-
         # Normalize all values from 0 to 1
         origin_rpc_graph = OriginRPCGraph(
             iforward={'start': iforward_start / total_duration, 'duration': iforward_duration / total_duration},
@@ -791,7 +690,6 @@ class MochiPlotter:
             wait={'start': wait_start / total_duration, 'duration': wait_duration / total_duration},
             forward_cb={'start': forward_cb_start / total_duration, 'duration': forward_cb_duration / total_duration},
             get_output={'start': get_output_start / total_duration, 'duration': get_output_duration / total_duration})
-
         return origin_rpc_graph.to_ipython_svg()   
 
     @debug_time 
@@ -806,7 +704,6 @@ class MochiPlotter:
         functions = ['handler', 'ult', 'irespond', 'respond_cb', 'irespond_wait', 'set_output', 'get_input']
         aggregations = ['duration', 'duration', 'duration', 'duration', 'duration', 'duration', 'duration']
         means, vars = self._get_rpc_mean_and_variance_per_step(rpc_list, 'server', functions, aggregations)
-
         handler_duration = means[0]
         ult_duration = means[1]
         irespond_duration = means[2]
@@ -814,26 +711,22 @@ class MochiPlotter:
         wait_duration = means[4]
         set_output_duration = means[5]
         get_input_duration = means[6]
-
         # Get mean and variance
         functions = ['ult', 'get_input', 'irespond', 'set_output', 'irespond_wait', 'respond_cb']
         aggregations = ['relative_timestamp_from_handler_start', 'relative_timestamp_from_ult_start', 'relative_timestamp_from_ult_start', 'relative_timestamp_from_irespond_start', 'relative_timestamp_from_irespond_end', 'relative_timestamp_from_irespond_start']
         means, vars = self._get_rpc_mean_and_variance_per_step(rpc_list, 'server', functions, aggregations)
-
         ult_relative_handler_start = means[0]
         get_input_relative_ult_start = means[1]
         irespond_relative_ult_start = means[2]
         set_output_relative_irespond_start = means[3]
         wait_relative_irespond_end = means[4]
         respond_cb_relative_irespond_start = means[5]
-
         ult_start = ult_relative_handler_start
         get_input_start = ult_start + get_input_relative_ult_start
         irespond_start = ult_start + irespond_relative_ult_start
         set_output_start = irespond_start + set_output_relative_irespond_start
         wait_start = irespond_start + irespond_duration + wait_relative_irespond_end
         respond_cb_start = irespond_start + respond_cb_relative_irespond_start
-
         total_duration = max(
             handler_duration,
             ult_start + ult_duration,
@@ -843,7 +736,6 @@ class MochiPlotter:
             wait_start + wait_duration,
             respond_cb_start + respond_cb_duration
         )
-
         # Normalize all values from 0 to 1
         target_rpc_graph = TargetRPCGraph(
             handler={'start': 0.0, 'duration': handler_duration / total_duration},
@@ -854,7 +746,6 @@ class MochiPlotter:
             wait={'start': wait_start / total_duration, 'duration': wait_duration / total_duration},
             respond_cb={'start': respond_cb_start / total_duration, 'duration': respond_cb_duration / total_duration}
         )
-
         return target_rpc_graph.to_ipython_svg()
     
     def _get_filtered_rpc_data(self, rpc_list, view_type):
@@ -873,7 +764,6 @@ class MochiPlotter:
         """
         if not rpc_list:
             raise ValueError("No RPCs provided")
-
         # Determine DataFrame and column mappings based on view_type
         if view_type == 'clients':
             ddf = self.stats.origin_rpc_ddf
@@ -887,12 +777,10 @@ class MochiPlotter:
             error_msg = "No data available: None of the selected RPCs were found in the server-side data."
         else:
             raise ValueError("view_type must be 'clients' or 'servers'")
-
         # Create filter DataFrame directly from rpc_list
         base_filter_data = []
         for src_address, dst_address, RPC in rpc_list:
             src, dest = self.get_src_dst_from_rpc_string(RPC)
-            
             if src in self.rpc_id_dict and dest in self.rpc_id_dict:
                 row_data = [
                     self.rpc_id_dict[src],  # parent_rpc_id
@@ -901,10 +789,8 @@ class MochiPlotter:
                     dst_address if view_type == 'servers' else src_address,  # address
                 ]
                 base_filter_data.append(row_data)
-
         if not base_filter_data:
             raise ValueError("No valid RPCs found in rpc_id_dict")
-
         # Define base columns for merge
         base_columns = [
             ('meta', '', 'parent_rpc_id'),
@@ -912,35 +798,27 @@ class MochiPlotter:
             ('meta', '', section_name),
             ('meta', '', address_col)
         ]
-        
         filter_df = pd.DataFrame(base_filter_data, columns=base_columns)
-
         # Ensure data types match
         filter_df[('meta', '', 'parent_rpc_id')] = filter_df[('meta', '', 'parent_rpc_id')].astype('uint64')
         filter_df[('meta', '', 'rpc_id')] = filter_df[('meta', '', 'rpc_id')].astype('uint64')
-
         # Ensure column structure matches exactly
         filter_df.columns = pd.MultiIndex.from_tuples(filter_df.columns)
-        
         # Convert to dask DataFrame
         filter_ddf = dd.from_pandas(filter_df, npartitions=1)
-
         # Perform the merge
         filtered_ddf = ddf.merge(
             filter_ddf,
             on=base_columns,  # Always merge on the base columns
             how='inner'
         ).persist()
-
         # Compute once
         try:
             filtered_df = filtered_ddf.compute()
         except Exception as e:
             raise ValueError(f"Error computing filtered dataframe: {e}")
-
         if filtered_df.empty:
             raise ValueError(error_msg)
-
         return filtered_df
 
     def _get_rpc_mean_and_variance_per_step(self, rpc_list, type, functions, aggregations):
@@ -949,14 +827,12 @@ class MochiPlotter:
         """
         mean_result = [0] * len(functions)
         var_result = [0] * len(functions)
-
         # Use the modular function to get filtered data
         view_type = 'servers' if type == 'server' else 'clients'
         try:
             filtered_df = self._get_filtered_rpc_data(rpc_list, view_type)
         except ValueError as e:
             raise ValueError(str(e))
-
         # Create grouping key
         section_name = 'received_from' if type == 'server' else 'sent_to'
         filtered_df['rpc_key'] = (
@@ -965,7 +841,6 @@ class MochiPlotter:
             filtered_df[('meta', '', section_name)] + '_' +
             filtered_df[('meta', '', 'address')]
         )
-
         # Process each function
         for func_idx, (func, agg) in enumerate(zip(functions, aggregations)):
             try:
@@ -976,36 +851,28 @@ class MochiPlotter:
                     (func, agg, 'avg'): 'max',
                     (func, agg, 'sum'): 'sum'
                 })
-                
                 if grouped.empty:   
                     continue
-                    
                 # Get valid data (where num > 0)
                 valid_data = grouped[grouped[(func, agg, 'num')] > 0]
                 if valid_data.empty:
                     continue
-                
                 # Calculate overall statistics
                 total_num = valid_data[(func, agg, 'num')].sum()
                 total_sum = valid_data[(func, agg, 'sum')].sum()
                 total_mean = total_sum / total_num
-                
                 # Calculate variance using combining formula
                 d_squared = (valid_data[(func, agg, 'avg')] - total_mean) ** 2
                 total_variance = (valid_data[(func, agg, 'num')] * 
                                 (valid_data[(func, agg, 'var')] + d_squared)).sum() / total_num
-                
                 mean_result[func_idx] = total_mean
                 var_result[func_idx] = total_variance
-                
             except KeyError as e:
                 print(f"Warning: Function {func} with aggregation {agg} not found in data: {e}")
                 continue
             except Exception as e:
                 print(f"Error processing function {func}: {e}")
                 continue
-
         if all(m is None for m in mean_result):
             raise ValueError("No data available: None of the selected RPCs were found in the server-side data.")
-
         return mean_result, var_result

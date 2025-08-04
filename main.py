@@ -1,4 +1,5 @@
 import glob
+
 from mochi_perf.statistics import MochiStatistics
 from dashboard_components import MochiDashboard
 from dask.distributed import Client
@@ -12,4 +13,4 @@ if __name__ == '__main__':
     print(f'Using {num_cores} cores')
     files = glob.glob(PATH)
     stats = MochiStatistics(files=files, num_cores=num_cores)            
-    MochiDashboard(stats)   
+    MochiDashboard(stats)
