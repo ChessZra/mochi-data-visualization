@@ -55,7 +55,6 @@ COMMON COMPONENTS:
 """
 import panel as pn
 import pandas as pd
-
 from holoviews.streams import Tap
 from plotting_functions import MochiPlotter
 
@@ -65,7 +64,6 @@ TITLE_STYLE = {
     'color': '#2c3e50',
     'text-align': 'center'
 }
-
 SECTION_STYLE = {
     'font-size': '22px',
     'font-weight': '600',
@@ -73,7 +71,6 @@ SECTION_STYLE = {
     'padding-bottom': '10px',
     'border-bottom': '2px solid #ecf0f1'
 }
-
 SUB_SECTION_STYLE = {
     'font-size': '18px',
     'font-weight': '500',
@@ -82,7 +79,6 @@ SUB_SECTION_STYLE = {
     "overflow-wrap": "break-word",
     "max-width": "1000px", 
 }
-
 DESCRIPTION_STYLE = {
     "font-size": "15px",
     "color": "#555",
@@ -91,7 +87,6 @@ DESCRIPTION_STYLE = {
     "overflow-wrap": "break-word",
     "max-width": "1000px", 
 }
-
 BORDER_STYLE = {
     'background': '#ffffff',
     'padding': '25px',
@@ -100,7 +95,6 @@ BORDER_STYLE = {
     'box-shadow': '0 4px 6px rgba(0,0,0,0.1)',
     'border-left': '4px solid #3498db'
 }
-
 HIGHLIGHT_STYLE = {
     'background': '#f8f9fa',
     'padding': '20px',
@@ -110,7 +104,6 @@ HIGHLIGHT_STYLE = {
     "max-width": "1000px",
     'color': '#2c3e50'
 }
-
 TIP_STYLE = {
     'background': '#e8f4fd',
     'padding': '15px',
@@ -120,7 +113,6 @@ TIP_STYLE = {
     "max-width": "1000px",
     'color': '#2c3e50'
 }
-
 SIDE_NOTE_STYLE = {
     'font-style': 'italic', 
     'color': '#7f8c8d', 
@@ -149,10 +141,10 @@ class MochiDashboard():
         @pn.depends(self.trigger)
         def get_page(context):
             if not context or context == 'back_to_main_page':
-                print("Attempting to display main_page")
+                print("Displaying the main_page")
                 return main_page
             else:
-                print("Attempting to display PER-RPC page")
+                print("Switching to the PER-RPC page")
                 return self._create_per_rpc_view()
         template = pn.template.MaterialTemplate(
             title="Mochi Performance Dashboard", 
@@ -160,7 +152,7 @@ class MochiDashboard():
             main=get_page
         )
         template.show()
-    
+
     """ General Overview Section (Main Page)"""
     def _create_header(self):
         return pn.Column(
@@ -273,7 +265,6 @@ class MochiDashboard():
                     ),
                 )
             )
-        
         return pn.Column(
             pn.pane.Markdown("## Process Deep Dive", styles=SECTION_STYLE),
             pn.pane.Markdown(
@@ -294,14 +285,11 @@ class MochiDashboard():
             value='Server Execution Time',
             width=300
         )
-
         @pn.depends(metric_dropdown)
         def get_visualization(metric_choice):
             try:
                 graph_5_view = self.plotter.create_graph_5(metric_choice)
-                # Only create the Tap stream if we have a valid plot
-                bars = graph_5_view
-                tap = Tap(source=bars)
+                tap = Tap(source=graph_5_view)
                 
                 @pn.depends(tap.param.x)
                 def on_bar_click(x):
@@ -309,7 +297,7 @@ class MochiDashboard():
                         self.trigger.value = x
                     return ''
                 return pn.Column(
-                    bars,
+                    graph_5_view,
                     on_bar_click,
                     pn.pane.Markdown(
                     "**What this shows:** These are the top 5 RPCs using the most resources, based on your selected metric. Use this to quickly find which RPCs are slowing things down or using the most bandwidth. Click any bar to explore detailed statistics for that specific RPC call.",
@@ -328,7 +316,6 @@ class MochiDashboard():
                         styles=DESCRIPTION_STYLE
                     )
                 )
-        
         return pn.Column(
             pn.pane.Markdown("## RPC Performance Analysis", styles=SECTION_STYLE),
             pn.pane.Markdown(
@@ -336,8 +323,8 @@ class MochiDashboard():
                 "Pick a metric (like execution time or client call time) to see which RPC is demanding for the clients and servers.",
                 styles=DESCRIPTION_STYLE
             ),
-                pn.Row(metric_dropdown),
-                get_visualization,
+            pn.Row(metric_dropdown),
+            get_visualization,
             pn.pane.Markdown(
                 "**Pro Tip:** Start with 'Server Execution Time' to find the slowest operations, "
                 "then explore 'Client Call Time' to see if delays are in the network or processing.",
@@ -374,7 +361,8 @@ class MochiDashboard():
                 per_rpc_button,
                 pn.pane.Markdown(
                     "**When to use this:** When you've found a specific process or RPC call that seems problematic and want to understand why",
-                    styles=TIP_STYLE
+                    styles=TIP_STYLE,
+                    width=700
                 )
             ),
             styles=BORDER_STYLE,
@@ -459,12 +447,10 @@ class MochiDashboard():
         right_layout = pn.Column()
         self.src_files, self.dest_files = [], []
         self.tab_selection = []
-        self.current_rpc_df = None  
-        # Track hidden selections separately
         self.origin_hidden_selections = []
         self.target_hidden_selections = []
-        self.rpc_hidden_selections = []  
-    
+        self.rpc_hidden_selections = []
+
         def update_origin_options(search_term):
             filtered_options = [opt for opt in all_options if search_term.lower() in opt.lower()] if search_term else all_options
             current_selections = origin_select.value if origin_select.value else []
@@ -479,7 +465,7 @@ class MochiDashboard():
                 origin_count_label.object = f"**{total_selected}** selected ({hidden_count} hidden), **{len(filtered_options)}** of **{len(all_options)}** processes shown"
             else:
                 origin_count_label.object = f"**{total_selected}** selected, **{len(filtered_options)}** of **{len(all_options)}** processes shown"
-        
+
         def update_target_options(search_term):
             filtered_options = [opt for opt in all_options if search_term.lower() in opt.lower()] if search_term else all_options
             current_selections = target_select.value if target_select.value else []
@@ -499,7 +485,6 @@ class MochiDashboard():
             self.trigger.value = 'back_to_main_page'
 
         def origin_on_change(event):
-            # Merge visible selections with hidden ones for the complete selection list
             visible_selections = event.new if event.new else []
             all_selections = list(set(visible_selections + self.origin_hidden_selections))
             self.src_files = all_selections
@@ -511,9 +496,8 @@ class MochiDashboard():
                 origin_count_label.object = f"**{selected_count}** selected ({hidden_count} hidden), **{total_shown}** of **{len(all_options)}** processes shown"
             else:
                 origin_count_label.object = f"**{selected_count}** selected, **{total_shown}** of **{len(all_options)}** processes shown"
-                
+
         def target_on_change(event):
-            # Merge visible selections with hidden ones for the complete selection list
             visible_selections = event.new if event.new else []
             all_selections = list(set(visible_selections + self.target_hidden_selections))
             self.dest_files = all_selections
@@ -526,10 +510,6 @@ class MochiDashboard():
             else:
                 target_count_label.object = f"**{selected_count}** selected, **{total_shown}** of **{len(all_options)}** processes shown"
 
-        def tabulator_selection_on_change(event):
-            # This will be redefined inside on_apply_button_click where df is available
-            self.tab_selection = event.new
-
         def on_origin_search_change(event):
             update_origin_options(event.new)
 
@@ -539,13 +519,11 @@ class MochiDashboard():
         def on_origin_clear_click(event):
             origin_search.value = ''
             origin_select.value = []
-            self.origin_hidden_selections = []  # Clear hidden selections too
+            self.origin_hidden_selections = []  
             self.src_files = []
-            # Reset the count label to show all processes
             origin_count_label.object = f"**0** selected, **{len(all_options)}** of **{len(all_options)}** processes shown"
 
         def on_origin_select_all_click(event):
-            # Select all visible options and clear hidden selections since we're selecting all visible
             origin_select.value = origin_select.options
             self.origin_hidden_selections = []
 
@@ -554,25 +532,14 @@ class MochiDashboard():
             target_select.value = []
             self.target_hidden_selections = []  # Clear hidden selections too
             self.dest_files = []
-            # Reset the count label to show all processes
             target_count_label.object = f"**0** selected, **{len(all_options)}** of **{len(all_options)}** processes shown"
 
         def on_target_select_all_click(event):
-            # Select all visible options and clear hidden selections since we're selecting all visible
             target_select.value = target_select.options
             self.target_hidden_selections = []
 
-        def on_tabulation_confirm_view_click(event):
-            # This will be redefined inside on_apply_button_click where df is available
-            if not self.tab_selection:
-                return
-            # Default behavior for when no table is loaded yet
-            right_layout.clear()
-            right_layout.append(pn.pane.Markdown("Please select processes and apply to see RPCs first.", styles=DESCRIPTION_STYLE))
-
         def on_apply_button_click(event):
             if not self.src_files or not self.dest_files:
-                # Show helpful message when no processes are selected
                 rpc_table_wrapper.clear()
                 rpc_table_wrapper.append(
                     pn.Column(
@@ -590,87 +557,67 @@ class MochiDashboard():
                     )
                 )
                 return
-            # Create table with better styling
+            
             df = self.plotter.create_rpc_table_dataframe(self.src_files, self.dest_files)
-            # Reset hidden selections when creating a new RPC table
             self.rpc_hidden_selections = []
-            # RPC search functionality
             rpc_search = pn.widgets.TextInput(
                 name='Search RPCs',
                 placeholder='Type to filter RPC calls...',  
                 width=400
             )
-            # RPC count indicator  
             rpc_count_label = pn.pane.Markdown(
                 f"**{len(df)}** RPCs shown",
                 styles=DESCRIPTION_STYLE
             )
-            # Create filtered table
             filtered_df = df.copy()
-            self.current_rpc_df = filtered_df  # Initialize instance variable
             table = pn.widgets.Tabulator(filtered_df, selectable=True, disabled=True, configuration={'selectableRowsRangeMode': 'click'})
-            
+
             def update_rpc_table(search_term):
                 nonlocal filtered_df
                 # Get current complete selections (visible + hidden)
                 current_selections = table.selection if table.selection else []
-                # Convert current visible selections to actual row indices from the original dataframe
                 all_current_selections = []
                 for visible_idx in current_selections:
                     if visible_idx < len(filtered_df):
-                        # Find this row in the original dataframe
                         filtered_row = filtered_df.iloc[visible_idx]
                         original_idx = df[(df['Source'] == filtered_row['Source']) & 
                                         (df['Target'] == filtered_row['Target']) & 
                                         (df['RPC'] == filtered_row['RPC'])].index[0]
                         all_current_selections.append(original_idx)
-                # Add hidden selections
                 all_current_selections.extend(self.rpc_hidden_selections)
-                all_current_selections = list(set(all_current_selections))  # Remove duplicates
-                # Apply filter
+                all_current_selections = list(set(all_current_selections)) 
                 if search_term:
                     filtered_df = df[df['RPC'].str.contains(search_term, case=False, na=False)]
                 else:
                     filtered_df = df.copy()
-                # Update table
-                table.value = filtered_df
-                self.current_rpc_df = filtered_df  # Store in instance variable
-                # Separate visible and hidden selections
+                table.value = filtered_df  
                 visible_selections = []
                 hidden_selections = []
                 for original_idx in all_current_selections:
                     if original_idx < len(df):
                         original_row = df.iloc[original_idx]
-                        # Check if this row exists in filtered results
                         matching_rows = filtered_df[(filtered_df['Source'] == original_row['Source']) & 
                                                    (filtered_df['Target'] == original_row['Target']) & 
                                                    (filtered_df['RPC'] == original_row['RPC'])]
                         if len(matching_rows) > 0:
-                            # Row is visible, find its index in filtered_df
                             filtered_idx = matching_rows.index[0]
-                            # Convert to position in filtered_df
                             visible_idx = filtered_df.index.get_loc(filtered_idx)
                             visible_selections.append(visible_idx)
                         else:
-                            # Row is hidden
                             hidden_selections.append(original_idx)
-                # Update selections
                 table.selection = visible_selections
                 self.rpc_hidden_selections = hidden_selections
-                # Update display
                 total_selected = len(all_current_selections)
                 hidden_count = len(hidden_selections)
                 if hidden_count > 0:
                     rpc_count_label.object = f"**{total_selected}** selected ({hidden_count} hidden), **{len(filtered_df)}** of **{len(df)}** RPCs shown"
                 else:
                     rpc_count_label.object = f"**{total_selected}** selected, **{len(filtered_df)}** of **{len(df)}** RPCs shown"
-            
+
             def on_rpc_search_change(event):
                 update_rpc_table(event.new)
-            
+
             rpc_search.param.watch(on_rpc_search_change, 'value')
-            
-            # Add select all and clear buttons
             select_all_button = pn.widgets.Button(
                 name='Select All Visible', 
                 button_type='default',
@@ -681,48 +628,35 @@ class MochiDashboard():
                 button_type='default',
                 width=120
             )
+
             def on_select_all_click(event):
-                # Select all rows in the filtered table and clear hidden selections since we're selecting all visible
                 table.selection = list(range(len(filtered_df)))
-                self.rpc_hidden_selections = []
-            
+
             def on_clear_rpc_click(event):
-                # Clear all selections, both visible and hidden
                 table.selection = []
                 self.rpc_hidden_selections = []
-                
-            # Redefine tabulator selection change handler with access to df and rpc_count_label
+
             def table_selection_change(event):
-                # Convert visible selections to original dataframe indices and merge with hidden selections
                 visible_selections = event.new if event.new else []
                 original_indices = []
-                
-                # Convert visible selections to original dataframe indices
                 for visible_idx in visible_selections:
                     if visible_idx < len(filtered_df):
                         filtered_row = filtered_df.iloc[visible_idx]
-                        # Find this row in the original dataframe
                         matching_rows = df[(df['Source'] == filtered_row['Source']) & 
                                          (df['Target'] == filtered_row['Target']) & 
                                          (df['RPC'] == filtered_row['RPC'])]
                         if len(matching_rows) > 0:
                             original_indices.append(matching_rows.index[0])
-                
-                # Merge with hidden selections and store complete selection
                 all_selections = list(set(original_indices + self.rpc_hidden_selections))
                 self.tab_selection = all_selections
-                
-                # Update count display
                 total_selected = len(all_selections)
                 hidden_count = len(self.rpc_hidden_selections)
                 total_shown = len(filtered_df)
-                
                 if hidden_count > 0:
                     rpc_count_label.object = f"**{total_selected}** selected ({hidden_count} hidden), **{total_shown}** of **{len(df)}** RPCs shown"
                 else:
                     rpc_count_label.object = f"**{total_selected}** selected, **{total_shown}** of **{len(df)}** RPCs shown"
-            
-            # Redefine confirm view handler with access to df
+
             def confirm_view_click(event):
                 if not self.tab_selection:
                     return
@@ -809,6 +743,7 @@ class MochiDashboard():
                             origin_select,
                             width=300
                         ),
+                        pn.Spacer(width=20),
                         pn.Column(
                             target_search,
                             target_count_label,
