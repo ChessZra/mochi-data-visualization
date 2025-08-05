@@ -344,7 +344,6 @@ class MochiPlotter:
                     row[('iforward_wait', 'duration', 'min')])
 
             call_count = row[('iforward', 'duration', 'num')]
-            
             if call_count > 0:
                 time_avg = time_sum / call_count
                 data.append({

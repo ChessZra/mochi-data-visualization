@@ -93,7 +93,6 @@ BORDER_STYLE = {
     'margin': '15px 0',
     'border-radius': '12px',
     'box-shadow': '0 4px 6px rgba(0,0,0,0.1)',
-    'border-left': '4px solid #3498db'
 }
 HIGHLIGHT_STYLE = {
     'background': '#f8f9fa',
@@ -724,10 +723,10 @@ class MochiDashboard():
         return pn.Row(
             pn.Column(
                 pn.Column(
+                    back_button,
                     pn.pane.Markdown(f"## PER-RPC Statistics Page", styles=SECTION_STYLE),
                     pn.pane.Markdown(
-                        "You're now analyzing a specific RPC type. Select the source and destination processes "
-                        "you want to examine, then choose which specific RPC calls to analyze in detail.",
+                        "Here you can analyze specific RPC communications in detail. Select the source and destination processes you want to examine, then choose which specific RPC calls to analyze in detail.",
                         styles=DESCRIPTION_STYLE
                     ),
                     pn.pane.Markdown("### Step 1: Choose Your Processes", styles=SUB_SECTION_STYLE),
@@ -764,23 +763,91 @@ class MochiDashboard():
             ),
             pn.Column(
                 right_layout,
-                pn.Row(back_button),
                 styles={'max-width': '1400px'}
             ),
         )
 
     def _create_detailed_per_rpc_layout(self, rpc_list):
-        """Create the detailed analysis layout with user-friendly explanations"""
+        # Create overview tab content
+        overview_content = pn.Column(
+            *self._create_detailed_per_rpc_overview_layout(rpc_list),
+            styles={'padding': '20px'}
+        )
+        server_content = pn.Column(
+            *self._create_detailed_per_rpc_server_layout(rpc_list),
+            styles={'padding': '20px'}
+        )
+        client_content = pn.Column(
+            *self._create_detailed_per_rpc_client_layout(rpc_list),
+            styles={'padding': '20px'}
+        )
+        tabs = pn.Tabs(
+            ("Overview", overview_content),
+            ("Server Analysis", server_content),
+            ("Client Analysis", client_content),
+            dynamic=True,
+            tabs_location='above',
+        )
         return pn.Column(
             pn.pane.Markdown("## Detailed Performance Analysis", styles=SECTION_STYLE),
             pn.pane.Markdown(
-                f"Analyzing **{len(rpc_list)} unique RPC call(s)**. Here's what we found:",
+                f"Analyzing **{len(rpc_list)} unique RPC call(s)**. Use the tabs below to explore server and client perspectives:",
                 styles=DESCRIPTION_STYLE
             ),
-            *self._create_detailed_per_rpc_server_layout(rpc_list),
-            *self._create_detailed_per_rpc_client_layout(rpc_list),
+            pn.pane.Markdown(
+                "• **Server Analysis**: Understand performance bottlenecks, workload distribution, and execution timing\n"
+                "• **Client Analysis**: Examine request patterns, response times, and client-side performance",
+                styles=DESCRIPTION_STYLE
+            ),
+            tabs,
             styles=BORDER_STYLE
         ) 
+    
+    def _create_detailed_per_rpc_overview_layout(self, rpc_list):
+        """Create an overview tab with summary information and navigation guidance"""
+        unique_sources = set()
+        unique_targets = set() 
+        rpc_types = set()
+        for src, dst, rpc in rpc_list:
+            unique_sources.add(src)
+            unique_targets.add(dst)
+            rpc_types.add(rpc)
+        return [
+            pn.pane.Markdown(
+                "Welcome to the detailed RPC analysis! This overview provides a quick summary of your selected data and guides you through the analysis.",
+                styles=DESCRIPTION_STYLE
+            ),
+            pn.pane.Markdown("### Analysis Summary", styles=SUB_SECTION_STYLE),
+            pn.Row(
+                pn.Column(
+                    pn.pane.Markdown(
+                        f"**Total RPC Calls Selected:** {len(rpc_list)}\n"
+                        f"**Unique Source Processes:** {len(unique_sources)}\n"
+                        f"**Unique Target Processes:** {len(unique_targets)}\n"
+                        f"**Unique RPC Types:** {len(rpc_types)}",
+                        styles=DESCRIPTION_STYLE
+                    ),
+                    width=400
+                ),
+                pn.Column(
+                    pn.pane.Markdown(
+                        "**What you're analyzing:**\n"
+                        "• Communication patterns between selected processes\n"
+                        "• Performance bottlenecks and timing breakdowns\n" 
+                        "• Load distribution and workload patterns\n"
+                        "• Client vs. server perspective differences",
+                        styles=DESCRIPTION_STYLE
+                    ),
+                    width=400
+                )
+            ),                        
+            pn.pane.Markdown("### Ready to Analyze?", styles=SUB_SECTION_STYLE),
+            pn.pane.Markdown(
+                "Click on the **Server Analysis** or **Client Analysis** tabs above to start exploring your data in detail. "
+                "Each tab provides comprehensive visualizations and insights tailored to that perspective.",
+                styles=DESCRIPTION_STYLE
+            )
+        ]
     
     def _create_detailed_per_rpc_server_layout(self, rpc_list):
         try:
@@ -827,13 +894,8 @@ class MochiDashboard():
                 styles=HIGHLIGHT_STYLE
             )
         return [
-            # Let's examine the server-side first!
             pn.pane.Markdown(
-                "## Server Analysis: Understanding Performance Bottlenecks",
-                styles=SUB_SECTION_STYLE
-            ),
-            pn.pane.Markdown(
-                "Now let's dive into the server-side perspective to understand where time is being spent processing requests. This analysis will help you identify which RPCs are consuming the most resources, how workload is distributed across your servers, and where potential bottlenecks might be occurring.",
+                "Dive into the server-side perspective to understand where time is being spent processing requests. This analysis will help you identify which RPCs are consuming the most resources, how workload is distributed across your servers, and where potential bottlenecks might be occurring.",
                 styles=DESCRIPTION_STYLE
             ), 
             # Timing Breakdown Section (server-side)
@@ -980,19 +1042,13 @@ class MochiDashboard():
                 styles=HIGHLIGHT_STYLE
             )
         return [
-            # Let's examine the client-side first!
             pn.pane.Markdown(
-                "## Client Analysis: Understanding Request Patterns and Response Times",
-                styles=SUB_SECTION_STYLE
-            ),
-            pn.pane.Markdown(
-                "Now let's examine the client-side perspective to understand how requests are being initiated and how long clients are waiting for responses. This analysis will help you identify which RPCs are taking the longest from the client's viewpoint, understand request patterns across your client processes, and spot potential issues with network latency or client-side bottlenecks.",
+                "Examine the client-side perspective to understand how requests are being initiated and how long clients are waiting for responses. This analysis will help you identify which RPCs are taking the longest from the client's viewpoint, understand request patterns across your client processes, and spot potential issues with network latency or client-side bottlenecks.",
                 styles=DESCRIPTION_STYLE
-            ), 
-            # Timing Breakdown Section (client-side)
+            ),
             pn.pane.Markdown("### Timing Breakdown", styles=SUB_SECTION_STYLE),
             pn.pane.Markdown(
-                "Now let's switch to the client's perspective. Thicker chords mean the client spent more time on their requests.",
+                "Let's switch to the client's perspective. Thicker chords mean the client spent more time on their requests.",
                 styles=DESCRIPTION_STYLE
             ), 
             pn.Column(chord_graph_client_view, width=700, height=700),
