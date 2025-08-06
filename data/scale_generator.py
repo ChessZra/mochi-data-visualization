@@ -43,7 +43,7 @@ def generate_scaled_files(num_files, output_dir="./scaled_test", base_address_id
         with open(filepath, 'w') as f:
             f.write(new_content)
     print(f"   Files created: {num_files:,}")
-    print(f"   • Output location: {os.path.abspath(output_dir)}")
+    print(f"   - Output location: {os.path.abspath(output_dir)}")
     return True
 
 def main():
@@ -64,7 +64,7 @@ def main():
         print("Error: Number of files must be positive")
         sys.exit(1)
     if num_files > 50000:
-        response = input(f"⚠️  You're about to generate {num_files:,} files. Continue? (y/N): ")
+        response = input(f"You're about to generate {num_files:,} files. Continue? (y/N): ")
         if response.lower() != 'y':
             print("Operation cancelled")
             sys.exit(0)    
