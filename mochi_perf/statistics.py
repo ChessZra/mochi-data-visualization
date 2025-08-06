@@ -34,7 +34,7 @@ class MochiStatistics:
         if files:            
             start = time.time()
             self.add_files_optimized(files)
-            print(f'Parsed {len(files)} files in {time.time() - start} seconds')
+            print(f'Parsed {len(files)} files in {time.time() - start:.2f} seconds')
 
     def clear(self):
         self.origin_rpc_ddf = None
@@ -44,19 +44,49 @@ class MochiStatistics:
         self.progress_loop_ddf =  None
     
     def add_files_optimized(self, files: list[str]):
+        print(f"Starting add_files_optimized with {len(files)} files")
+        
         # Validate files- we need to validate it as all columns need to be matching
         # for dask. Otherwise, mismatch error is thrown
+        validation_start = time.time()
         origin_files, target_files = [], []
+        
+        # Track cumulative times across all validation calls
+        total_file_read_time = 0
+        total_json_parse_time = 0
+        total_validation_logic_time = 0
+        
         for f in files:
-            if self._validate_file(f, 'origin'):
+            file_times = self._validate_file(f, 'origin')
+            if file_times[0]:  # if validation passed
                 origin_files.append(f)
-            if self._validate_file(f, 'target'):
+                total_file_read_time += file_times[1]
+                total_json_parse_time += file_times[2]
+                total_validation_logic_time += file_times[3]
+                
+            file_times = self._validate_file(f, 'target')
+            if file_times[0]:  # if validation passed
                 target_files.append(f)
+                total_file_read_time += file_times[1]
+                total_json_parse_time += file_times[2]
+                total_validation_logic_time += file_times[3]
+        
+        validation_time = time.time() - validation_start
+        print(f"File validation took {validation_time:.2f} seconds")
+        print(f"  - Total file I/O time: {total_file_read_time:.2f} seconds")
+        print(f"  - Total JSON parsing time: {total_json_parse_time:.2f} seconds") 
+        print(f"  - Total validation logic time: {total_validation_logic_time:.2f} seconds")
+        print(f"Found {len(origin_files)} origin files, {len(target_files)} target files")
+        
         def batch_files(file_list, batch_size):
             for i in range(0, len(file_list), batch_size):
                 yield file_list[i:i+batch_size]
+                
         # Send tasks
+        task_creation_start = time.time()
         batch_size = max(1, ceil(len(origin_files) / self.num_cores))
+        print(f"Using batch size: {batch_size}")
+        
         origin_tasks = [
             dask.delayed(lambda fs: pd.concat([MochiStatistics._parse_file(f, 'origin') for f in fs], axis=0))(batch)
             for batch in batch_files(origin_files, batch_size)
@@ -65,33 +95,55 @@ class MochiStatistics:
             dask.delayed(lambda fs: pd.concat([MochiStatistics._parse_file(f, 'target') for f in fs], axis=0))(batch)
             for batch in batch_files(target_files, batch_size)
         ]
+        task_creation_time = time.time() - task_creation_start
+        print(f"Task creation took {task_creation_time:.2f} seconds")
+        print(f"Created {len(origin_tasks)} origin tasks, {len(target_tasks)} target tasks")
+        
+        ddf_creation_start = time.time()
         self.origin_rpc_ddf = dd.from_delayed(origin_tasks)
-        self.target_rpc_ddf = dd.from_delayed(target_tasks) 
+        self.target_rpc_ddf = dd.from_delayed(target_tasks)
+        ddf_creation_time = time.time() - ddf_creation_start
+        print(f"DDF creation took {ddf_creation_time:.2f} seconds")
+        
+        total_time = time.time() - (task_creation_start - task_creation_time - validation_time)
+        print(f"Total add_files_optimized took {total_time:.2f} seconds") 
 
     def _validate_file(self, filename: str, section_name: str):
         # Check if file is empty before trying to parse JSON
         if os.path.getsize(filename) == 0:
-            return False
+            return (False, 0, 0, 0)  # Return timing info even on failure
     
+        file_start = time.time()
         with open(filename, 'rb') as f:
-            content = orjson.loads(f.read())
+            file_content = f.read()
+        file_read_time = time.time() - file_start
+        
+        json_parse_start = time.time()
+        content = orjson.loads(file_content)
+        json_parse_time = time.time() - json_parse_start
+        
+        validation_start = time.time()
         rpcs = content['rpcs']
         progress_loop = content['progress_loop']
         address = content['address']
         basename = os.path.basename(filename)
         # Check if address field is empty
         if not address or address == '':
-            return False
+            validation_time = time.time() - validation_start
+            return (False, file_read_time, json_parse_time, validation_time)
+            
         if section_name == 'origin':
             # Check if origin section exists
             rpcs = {k:v for k, v in rpcs.items() if section_name in v}
             if len(rpcs) == 0:
-                return False
+                validation_time = time.time() - validation_start
+                return (False, file_read_time, json_parse_time, validation_time)
         elif section_name == 'target':  
             # Check if target section exists
             rpcs = {k:v for k, v in rpcs.items() if section_name in v}
             if len(rpcs) == 0:
-                return False      
+                validation_time = time.time() - validation_start
+                return (False, file_read_time, json_parse_time, validation_time)     
             # 'target' section also implies that it received a bulk rpc
             is_target_file = False
             for rpc in rpcs.values():
@@ -103,32 +155,55 @@ class MochiStatistics:
                         continue
                     is_target_file = True
             if not is_target_file:
-                return False
-        return True
+                validation_time = time.time() - validation_start
+                return (False, file_read_time, json_parse_time, validation_time)
+                
+        validation_time = time.time() - validation_start
+        
+        # Only log individual slow files
+        total_file_time = file_read_time + json_parse_time + validation_time
+        if total_file_time > 0.1:
+            print(f"  Slow file {basename}: total={total_file_time:.3f}s (read={file_read_time:.3f}s, json={json_parse_time:.3f}s, logic={validation_time:.3f}s)")
+            
+        return (True, file_read_time, json_parse_time, validation_time)
 
     """ Static methods are used for serialization when passing it to dask.delayed via lambda """
     @staticmethod
     def _parse_file(filename: str, section_name: str):
+        parse_start = time.time()
         try:
+            file_start = time.time()
             with open(filename, 'rb') as f:
                 content = orjson.loads(f.read())
+            file_read_time = time.time() - file_start
+            
+            data_processing_start = time.time()
             rpcs = content['rpcs']
             progress_loop = content['progress_loop']
             address = content['address']
             basename = os.path.basename(filename)
+            
+            df_creation_start = time.time()
             if section_name == 'origin':
-                return MochiStatistics._make_rpc_stats_df(basename, address, rpcs, 'origin', 'sent_to')
+                result = MochiStatistics._make_rpc_stats_df(basename, address, rpcs, 'origin', 'sent_to')
             elif section_name == 'target':
-                return MochiStatistics._make_rpc_stats_df(basename, address, rpcs, 'target', 'received_from')
+                result = MochiStatistics._make_rpc_stats_df(basename, address, rpcs, 'target', 'received_from')
             # Unused:
             elif section_name == 'bulk_create':
-                return MochiStatistics._make_bulk_create_stats_df(basename, address, rpcs)
+                result = MochiStatistics._make_bulk_create_stats_df(basename, address, rpcs)
             elif section_name == 'bulk_transfer':
-                return MochiStatistics._make_bulk_transfer_stats_df(basename, address, rpcs)
+                result = MochiStatistics._make_bulk_transfer_stats_df(basename, address, rpcs)
             elif section_name == 'progress_loop':
-                return MochiStatistics._make_progress_loop_stats_df(basename, address, progress_loop)
+                result = MochiStatistics._make_progress_loop_stats_df(basename, address, progress_loop)
             else:
                 raise Exception('Invalid option for _parse_file')
+            df_creation_time = time.time() - df_creation_start
+            
+            total_parse_time = time.time() - parse_start
+            if total_parse_time > 0.5:  # Only log slow parses
+                print(f"    Slow parse {basename}: total={total_parse_time:.3f}s (read={file_read_time:.3f}s, df_create={df_creation_time:.3f}s)")
+            
+            return result
         except Exception as e:
             print(f"Error processing file {filename}: {str(e)}")
             return None

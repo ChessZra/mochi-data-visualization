@@ -8,7 +8,7 @@ client_files = 0
 scanned_files = 0
 
 empty_address_fields = 0
-for filepath in glob.glob('.\quintain\*.stats.json'):
+for filepath in glob.glob('scaled_test\\*.stats.json'):
     if os.path.getsize(filepath) == 0:
         files_skipped += 1
         continue
