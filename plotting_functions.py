@@ -20,32 +20,67 @@ from mochi_perf.graph import OriginRPCGraph, TargetRPCGraph
 class MochiPlotter:
 
     def __init__(self, stats):
+        print("MochiPlotter.__init__: Starting initialization...")
+        start_time = time.time()
         self.stats = stats
+        print("MochiPlotter.__init__: Computing origin RPC dataframe...")
+        origin_compute_start = time.time()
         # The ordering of this index is expected:
         columns_to_move = [('meta', '', 'file'), ('meta', '', 'address'), ('meta', '', 'name'), ('meta', '', 'rpc_id'), ('meta', '', 'provider_id'), ('meta', '', 'parent_rpc_id'), ('meta', '', 'parent_provider_id'), ('meta', '', 'sent_to')]
         self.origin_rpc_df = self._convert_columns_to_multiindex(stats.origin_rpc_ddf.compute(), columns_to_move)
+        origin_compute_time = time.time() - origin_compute_start
+        print(f"MochiPlotter.__init__: Origin RPC compute took {origin_compute_time:.2f} seconds")
+        print("MochiPlotter.__init__: Computing target RPC dataframe...")
+        target_compute_start = time.time()
         columns_to_move = [('meta', '', 'file'), ('meta', '', 'address'), ('meta', '', 'name'), ('meta', '', 'rpc_id'), ('meta', '', 'provider_id'), ('meta', '', 'parent_rpc_id'), ('meta', '', 'parent_provider_id'), ('meta', '', 'received_from')]
         self.target_rpc_df = self._convert_columns_to_multiindex(stats.target_rpc_ddf.compute(), columns_to_move)
+        target_compute_time = time.time() - target_compute_start
+        print(f"MochiPlotter.__init__: Target RPC compute took {target_compute_time:.2f} seconds")
         self.rpc_name_dict = {65535: 'None'}
         self.rpc_id_dict = {'None': 65535}
-        for df in [self.origin_rpc_df, self.target_rpc_df]:
-            for index in df.index:
+        for df_name, df in [('origin', self.origin_rpc_df), ('target', self.target_rpc_df)]:
+            print(f"MochiPlotter.__init__: Processing {df_name} dataframe with {len(df)} rows...")
+            for i, index in enumerate(df.index):
                 self.rpc_name_dict[index[3]], self.rpc_id_dict[index[2]] = index[2], index[3]
+                if i % 10000 == 0 and i > 0:  # Progress indicator for large datasets
+                    print(f"MochiPlotter.__init__: Processed {i} rows from {df_name} dataframe...")
+        total_time = time.time() - start_time
+        print(f"MochiPlotter.__init__: Total initialization took {total_time:.2f} seconds")
+        print("MochiPlotter.__init__: Initialization complete!")
 
     def _convert_columns_to_multiindex(self, df, columns_to_move):
+        print(f"_convert_columns_to_multiindex: Converting dataframe with {len(df)} rows and {len(df.columns)} columns...")
+        start_time = time.time()
+        
         # Create temporary column names to use with set_index
         temp_names = [f"temp_{i}" for i in range(len(columns_to_move))]
         # Extract the columns and create a temporary DataFrame
         temp_df = df.copy()
+        print(f"_convert_columns_to_multiindex: DataFrame copy took {time.time() - start_time:.2f} seconds")
+        
+        copy_time = time.time()
         for i, col in enumerate(columns_to_move):
             temp_df[temp_names[i]] = df[col]
+        print(f"_convert_columns_to_multiindex: Column extraction took {time.time() - copy_time:.2f} seconds")
+        
         # Set these as index
+        index_time = time.time()
         temp_df = temp_df.set_index(temp_names)
+        print(f"_convert_columns_to_multiindex: Setting index took {time.time() - index_time:.2f} seconds")
+        
         # Rename the index levels
+        rename_time = time.time()
         final_names = [col[-1] for col in columns_to_move]  # Use the last part of the tuple as name
         temp_df.index.names = final_names
+        print(f"_convert_columns_to_multiindex: Index renaming took {time.time() - rename_time:.2f} seconds")
+        
         # Remove original columns
+        drop_time = time.time()
         temp_df = temp_df.drop(columns=columns_to_move)
+        print(f"_convert_columns_to_multiindex: Column dropping took {time.time() - drop_time:.2f} seconds")
+        
+        total_time = time.time() - start_time
+        print(f"_convert_columns_to_multiindex: Total conversion took {total_time:.2f} seconds")
         return temp_df
 
     @staticmethod
