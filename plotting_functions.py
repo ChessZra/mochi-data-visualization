@@ -5,9 +5,8 @@ This module provides a comprehensive set of functions for visualizing RPC (Remot
 performance data. It follows a consistent methodology for data processing and visualization.
 """
 
-import dask.dataframe as dd
 import holoviews as hv
-import hvplot.pandas # For Series
+import hvplot.pandas  # For Series
 import pandas as pd
 import time
 
@@ -20,77 +19,19 @@ from mochi_perf.graph import OriginRPCGraph, TargetRPCGraph
 class MochiPlotter:
 
     def __init__(self, stats):
-        print("MochiPlotter.__init__: Starting initialization...")
-        start_time = time.time()
         self.stats = stats
-        print("MochiPlotter.__init__: Computing origin RPC dataframe...")
-        origin_compute_start = time.time()
-        # The ordering of this index is expected:
-        columns_to_move = [('meta', '', 'file'), ('meta', '', 'address'), ('meta', '', 'name'), ('meta', '', 'rpc_id'), ('meta', '', 'provider_id'), ('meta', '', 'parent_rpc_id'), ('meta', '', 'parent_provider_id'), ('meta', '', 'sent_to')]
-        self.origin_rpc_df = self._convert_columns_to_multiindex(stats.origin_rpc_ddf.compute(), columns_to_move)
-        origin_compute_time = time.time() - origin_compute_start
-        print(f"MochiPlotter.__init__: Origin RPC compute took {origin_compute_time:.2f} seconds")
-        print("MochiPlotter.__init__: Computing target RPC dataframe...")
-        target_compute_start = time.time()
-        columns_to_move = [('meta', '', 'file'), ('meta', '', 'address'), ('meta', '', 'name'), ('meta', '', 'rpc_id'), ('meta', '', 'provider_id'), ('meta', '', 'parent_rpc_id'), ('meta', '', 'parent_provider_id'), ('meta', '', 'received_from')]
-        self.target_rpc_df = self._convert_columns_to_multiindex(stats.target_rpc_ddf.compute(), columns_to_move)
-        target_compute_time = time.time() - target_compute_start
-        print(f"MochiPlotter.__init__: Target RPC compute took {target_compute_time:.2f} seconds")
         self.rpc_name_dict = {65535: 'None'}
         self.rpc_id_dict = {'None': 65535}
-        for df_name, df in [('origin', self.origin_rpc_df), ('target', self.target_rpc_df)]:
-            print(f"MochiPlotter.__init__: Processing {df_name} dataframe with {len(df)} rows...")
-            for i, index in enumerate(df.index):
+        for df in [stats.origin_rpc_df, stats.target_rpc_df]:
+            for index in df.index:
                 self.rpc_name_dict[index[3]], self.rpc_id_dict[index[2]] = index[2], index[3]
-                if i % 10000 == 0 and i > 0:  # Progress indicator for large datasets
-                    print(f"MochiPlotter.__init__: Processed {i} rows from {df_name} dataframe...")
-        total_time = time.time() - start_time
-        print(f"MochiPlotter.__init__: Total initialization took {total_time:.2f} seconds")
-        print("MochiPlotter.__init__: Initialization complete!")
-
-    def _convert_columns_to_multiindex(self, df, columns_to_move):
-        print(f"_convert_columns_to_multiindex: Converting dataframe with {len(df)} rows and {len(df.columns)} columns...")
-        start_time = time.time()
-        
-        # Create temporary column names to use with set_index
-        temp_names = [f"temp_{i}" for i in range(len(columns_to_move))]
-        # Extract the columns and create a temporary DataFrame
-        temp_df = df.copy()
-        print(f"_convert_columns_to_multiindex: DataFrame copy took {time.time() - start_time:.2f} seconds")
-        
-        copy_time = time.time()
-        for i, col in enumerate(columns_to_move):
-            temp_df[temp_names[i]] = df[col]
-        print(f"_convert_columns_to_multiindex: Column extraction took {time.time() - copy_time:.2f} seconds")
-        
-        # Set these as index
-        index_time = time.time()
-        temp_df = temp_df.set_index(temp_names)
-        print(f"_convert_columns_to_multiindex: Setting index took {time.time() - index_time:.2f} seconds")
-        
-        # Rename the index levels
-        rename_time = time.time()
-        final_names = [col[-1] for col in columns_to_move]  # Use the last part of the tuple as name
-        temp_df.index.names = final_names
-        print(f"_convert_columns_to_multiindex: Index renaming took {time.time() - rename_time:.2f} seconds")
-        
-        # Remove original columns
-        drop_time = time.time()
-        temp_df = temp_df.drop(columns=columns_to_move)
-        print(f"_convert_columns_to_multiindex: Column dropping took {time.time() - drop_time:.2f} seconds")
-        
-        total_time = time.time() - start_time
-        print(f"_convert_columns_to_multiindex: Total conversion took {total_time:.2f} seconds")
-        return temp_df
 
     @staticmethod
     def debug_time(func):
         """
         Simple timing decorator that measures and prints the execution time of decorated functions.
-        
         Args:
             func: The function to be timed
-            
         Returns:
             wrapper: A wrapped version of the function that prints timing information
         """
@@ -105,10 +46,8 @@ class MochiPlotter:
     def get_src_dst_from_rpc_string(rpc_string):
         """
         Parse an RPC string to extract source and destination components.
-        
         Args:
             rpc_string (str): rpc_string string in format "source ➔ destination" or just "destination"
-            
         Returns:
             tuple: (source, destination) where source is 'None' if not specified
         """
@@ -122,11 +61,9 @@ class MochiPlotter:
     def wrap_label(label, width=10):
         """
         Wrap a long label by inserting newlines at specified intervals.
-        
         Args:
             label (str): The label text to wrap
             width (int): Maximum characters per line (default: 10)
-            
         Returns:
             str: The wrapped label with newlines inserted
         """
@@ -135,20 +72,18 @@ class MochiPlotter:
     def get_all_addresses(self):
         """
         Extract all unique addresses from both client and server RPC data.
-        
         Args:
             stats: Statistics object containing origin_rpc_df and target_rpc_df
-            
         Returns:
             list: Sorted list of all unique addresses found in the data
         """
         address1, address2, address3, address4 = set(), set(), set(), set()
-        if self.origin_rpc_df is not None and not self.origin_rpc_df.empty:
-            address1 = set(self.origin_rpc_df.index.get_level_values('address'))
-            address2 = set(self.origin_rpc_df.index.get_level_values('sent_to'))
-        if self.target_rpc_df is not None and not self.target_rpc_df.empty:
-            address3 = set(self.target_rpc_df.index.get_level_values('address'))
-            address4 = set(self.target_rpc_df.index.get_level_values('received_from'))
+        if self.stats.origin_rpc_df is not None and not self.stats.origin_rpc_df.empty:
+            address1 = set(self.stats.origin_rpc_df.index.get_level_values('address'))
+            address2 = set(self.stats.origin_rpc_df.index.get_level_values('sent_to'))
+        if self.stats.target_rpc_df is not None and not self.stats.target_rpc_df.empty:
+            address3 = set(self.stats.target_rpc_df.index.get_level_values('address'))
+            address4 = set(self.stats.target_rpc_df.index.get_level_values('received_from'))
         return sorted(list(address1 | address2 | address3 | address4))
 
     """ Main Page Plots """
@@ -160,7 +95,7 @@ class MochiPlotter:
         This graph aggregates the total time spent by each client process making RPC calls,
         including iforward duration, wait time, and relative timestamps.
         """
-        df = self.origin_rpc_df
+        df = self.stats.origin_rpc_df
         step_1 = df['iforward']['duration']['sum'].rename('iforward_sum')
         step_2 = df['iforward_wait']['relative_timestamp_from_iforward_end']['sum'].rename('iforward_wait_rel_sum')
         step_3 = df['iforward_wait']['duration']['sum'].rename('iforward_wait_duration_sum')
@@ -177,7 +112,7 @@ class MochiPlotter:
         This graph shows the total time each server process spends executing RPC requests,
         based on the 'ult' duration metric.
         """
-        df = self.target_rpc_df
+        df = self.stats.target_rpc_df
         aggregate_process_df = df['ult']['duration']['sum'].groupby('address').agg('sum')
         return aggregate_process_df.sort_values(ascending=False).hvplot.bar(xlabel='Address', ylabel='Total Time', title='Total RPC Execution Time by Process (Server Side)', rot=45, height=500, width=1000).opts(shared_axes=False)
 
@@ -189,7 +124,7 @@ class MochiPlotter:
         This graph shows the top 5 RPC calls made by a specific client process,
         including total time spent on each RPC type.
         """
-        df = self.origin_rpc_df
+        df = self.stats.origin_rpc_df
         filtered_process = df.xs(address, level='address')
         new_x_labels = []
         for file, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, sent_to in filtered_process.index:
@@ -210,7 +145,7 @@ class MochiPlotter:
         This graph shows the top 5 RPC executions handled by a specific server process,
         including total time spent on each RPC type.
         """   
-        df = self.target_rpc_df
+        df = self.stats.target_rpc_df
         filtered_process = df.xs(address, level='address')
         new_x_labels = []
         for file, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, sent_to in filtered_process.index:
@@ -229,13 +164,13 @@ class MochiPlotter:
         # Configuration mapping for metrics
         metric_config = {
             'Server Execution Time': {
-                'df': self.target_rpc_df["ult"]["duration"]['sum'],
+                'df': self.stats.target_rpc_df["ult"]["duration"]['sum'],
                 'title': f'Top 5 Busiest RPCs (total time executing across all servers)'
             },
             'Client Call Time': {
-                'df': (self.origin_rpc_df['iforward']['duration']['sum'] + 
-                    self.origin_rpc_df['iforward_wait']['relative_timestamp_from_iforward_end']['sum'] + 
-                    self.origin_rpc_df['iforward_wait']['duration']['sum']),
+                'df': (self.stats.origin_rpc_df['iforward']['duration']['sum'] + 
+                    self.stats.origin_rpc_df['iforward_wait']['relative_timestamp_from_iforward_end']['sum'] + 
+                    self.stats.origin_rpc_df['iforward_wait']['duration']['sum']),
                 'title': f'Top 5 Busiest RPCs (total time waiting across all clients)',
             },
         }
@@ -255,12 +190,12 @@ class MochiPlotter:
     """ Per-RPC Plots """
     def create_rpc_table_dataframe(self, src_files, dest_files):
         rpcs = []
-        for index, row in self.origin_rpc_df.iterrows():
+        for index, row in self.stats.origin_rpc_df.iterrows():
             file, address, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, sent_to = index  
             if address in src_files and sent_to in dest_files:
                 RPC = f'{self.rpc_name_dict[parent_rpc_id]} ➔ {self.rpc_name_dict[rpc_id]}' if self.rpc_name_dict[parent_rpc_id] != 'None' else self.rpc_name_dict[rpc_id]
                 rpcs.append({'Source': address, 'Target': sent_to, 'RPC': RPC})
-        for index, row in self.target_rpc_df.iterrows():
+        for index, row in self.stats.target_rpc_df.iterrows():
             file, address, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, received_from = index    
             if received_from in src_files and address in dest_files:
                 RPC = f'{self.rpc_name_dict[parent_rpc_id]} ➔ {self.rpc_name_dict[rpc_id]}' if self.rpc_name_dict[parent_rpc_id] != 'None' else self.rpc_name_dict[rpc_id]
@@ -275,20 +210,20 @@ class MochiPlotter:
         """
         # Step 1: Get filtered data using the modular function
         filtered_df = self._get_filtered_rpc_data(rpc_list, 'servers')
-        # Step 2: Add RPC labels for grouping
+        # Step 2: Add RPC labels for grouping using index access
         labels = []
-        for _, row in filtered_df.iterrows():
-            src_address = row[('meta', '', 'received_from')]
-            dst_address = row[('meta', '', 'address')]
-            parent_rpc_id = row[('meta', '', 'parent_rpc_id')]
-            rpc_id = row[('meta', '', 'rpc_id')]
+        for idx, row in filtered_df.iterrows():
+            # Extract index values directly
+            file, address, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, received_from = idx
             src_name = self.rpc_name_dict[parent_rpc_id]
             dest_name = self.rpc_name_dict[rpc_id]
-            label = f'{src_name} ➔ {dest_name}\n<{dst_address}>' if src_name != 'None' else f'{dest_name}\n<{dst_address}>'
+            label = f'{src_name} ➔ {dest_name}\n<{address}>' if src_name != 'None' else f'{dest_name}\n<{address}>'
             labels.append(label)
-        filtered_df['rpc_label'] = labels
+        # Create a new DataFrame with the labels for grouping
+        temp_df = filtered_df.copy()
+        temp_df['rpc_label'] = labels
         # Step 3: Group by RPC label and calculate statistics
-        grouped = filtered_df.groupby('rpc_label').agg({
+        grouped = temp_df.groupby('rpc_label').agg({
             ('handler', 'duration', 'sum'): 'sum',
             ('handler', 'duration', 'max'): 'max', 
             ('handler', 'duration', 'min'): 'min',
@@ -313,7 +248,7 @@ class MochiPlotter:
             })
         if not data:
             raise ValueError("No data available: None of the selected RPCs were found in the server-side data. This may mean these RPCs were not executed on the server, were filtered out, or do not exist for your current selection.")
-        # Step 4: Create visualization (unchanged)
+        # Step 4: Create visualization 
         df = pd.DataFrame(data)
         df = df.sort_values(by='avg', ascending=False).head(5).reset_index(drop=True)
         scatter = hv.Scatter(df).opts(size=10, color='black', tools=['hover'])
@@ -337,21 +272,22 @@ class MochiPlotter:
         """
         # Step 1: Get filtered data using the modular function
         filtered_df = self._get_filtered_rpc_data(rpc_list, 'clients')
-        # Step 2: Add RPC labels (unchanged)
+        
+        # Step 2: Add RPC labels using index access
         start = time.time()
         labels = []
-        for _, row in filtered_df.iterrows():
-            src_address = row[('meta', '', 'address')]
-            dst_address = row[('meta', '', 'sent_to')]
-            parent_rpc_id = row[('meta', '', 'parent_rpc_id')]
-            rpc_id = row[('meta', '', 'rpc_id')]
+        for idx, row in filtered_df.iterrows():
+            # Extract index values directly
+            file, address, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, sent_to = idx
             src_name = self.rpc_name_dict[parent_rpc_id]
             dest_name = self.rpc_name_dict[rpc_id]
-            label = f'{src_name} ➔ {dest_name}\n<{src_address}>' if src_name != 'None' else f'{dest_name}\n<{src_address}>'
+            label = f'{src_name} ➔ {dest_name}\n<{address}>' if src_name != 'None' else f'{dest_name}\n<{address}>'
             labels.append(label)
-        filtered_df['rpc_label'] = labels
+        # Create a new DataFrame with the labels for grouping
+        temp_df = filtered_df.copy()
+        temp_df['rpc_label'] = labels
         # Step 3: Group by RPC label and calculate statistics
-        grouped = filtered_df.groupby('rpc_label').agg({
+        grouped = temp_df.groupby('rpc_label').agg({
             ('iforward', 'duration', 'sum'): 'sum',
             ('iforward_wait', 'relative_timestamp_from_iforward_end', 'sum'): 'sum', 
             ('iforward_wait', 'duration', 'sum'): 'sum',
@@ -377,7 +313,6 @@ class MochiPlotter:
             time_min = (row[('iforward', 'duration', 'min')] + 
                     row[('iforward_wait', 'relative_timestamp_from_iforward_end', 'min')] + 
                     row[('iforward_wait', 'duration', 'min')])
-
             call_count = row[('iforward', 'duration', 'num')]
             if call_count > 0:
                 time_avg = time_sum / call_count
@@ -558,21 +493,22 @@ class MochiPlotter:
         # Step 2: Build communication patterns and weights
         f = Counter()  # (src, dest): weight
         unique_nodes = set()
-        for _, row in filtered_df.iterrows():
+        for idx, row in filtered_df.iterrows():
+            # Extract index values directly
+            file, address, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, endpoint = idx
+            
             if view_type == 'servers':
                 # For servers: communication is from received_from to address
-                address = row[('meta', '', 'address')]
-                other_address = row[('meta', '', 'received_from')]
-                src, dest = other_address, address
+                # endpoint is 'received_from' in this case
+                src, dest = endpoint, address
                 try:
                     weight = row[('ult', 'duration', 'sum')]
                 except KeyError:
                     weight = 0
             else:
-                # For clients: communication is from address to sent_to
-                address = row[('meta', '', 'address')]
-                other_address = row[('meta', '', 'sent_to')]
-                src, dest = address, other_address
+                # For clients: communication is from address to sent_to  
+                # endpoint is 'sent_to' in this case
+                src, dest = address, endpoint
                 try:
                     weight = (row[('iforward', 'duration', 'sum')] + 
                             row[('iforward_wait', 'relative_timestamp_from_iforward_end', 'sum')] + 
@@ -638,10 +574,10 @@ class MochiPlotter:
         filtered_df = self._get_filtered_rpc_data(rpc_list, view_type)
         # Step 2: Build the heatmap data directly without modifying the DataFrame
         rpcs = []
-        for _, row in filtered_df.iterrows():
-            rpc_id = row[('meta', '', 'rpc_id')]
+        for idx, row in filtered_df.iterrows():
+            # Extract index values directly
+            file, address, name, rpc_id, provider_id, parent_rpc_id, parent_provider_id, endpoint = idx
             rpc_name = self.rpc_name_dict[rpc_id]
-            address = row[('meta', '', 'address')]
             try:
                 num_calls = row[count_col]
                 if num_calls > 0:  # Only include if there are actual calls
@@ -795,69 +731,58 @@ class MochiPlotter:
     def _get_filtered_rpc_data_cached(self, rpc_list, view_type):
         """
         Internal cached implementation of _get_filtered_rpc_data
+        Uses index-based filtering with .xs() for consistency with other graph functions
         """
         if not rpc_list:
             raise ValueError("No RPCs provided")
-        # Determine DataFrame and column mappings based on view_type
+            
+        # Determine DataFrame and error message based on view_type
         if view_type == 'clients':
-            ddf = self.stats.origin_rpc_ddf
+            original_df = self.stats.origin_rpc_df
             section_name = 'sent_to'
             address_col = 'address'
             error_msg = "No data available: None of the selected RPCs were found in the client-side data."
         elif view_type == 'servers':
-            ddf = self.stats.target_rpc_ddf
-            section_name = 'received_from'
+            original_df = self.stats.target_rpc_df
+            section_name = 'received_from'  
             address_col = 'address'
             error_msg = "No data available: None of the selected RPCs were found in the server-side data."
         else:
             raise ValueError("view_type must be 'clients' or 'servers'")
-        # Create filter DataFrame directly from rpc_list
-        base_filter_data = []
+        # Collect all matching rows using index-based filtering
+        filtered_rows = []
         for src_address, dst_address, RPC in rpc_list:
             src, dest = self.get_src_dst_from_rpc_string(RPC)
             if src in self.rpc_id_dict and dest in self.rpc_id_dict:
-                row_data = [
-                    self.rpc_id_dict[src],  # parent_rpc_id
-                    self.rpc_id_dict[dest], # rpc_id
-                    src_address if view_type == 'servers' else dst_address,  # section_name address
-                    dst_address if view_type == 'servers' else src_address,  # address
-                ]
-                base_filter_data.append(row_data)
-        if not base_filter_data:
-            raise ValueError("No valid RPCs found in rpc_id_dict")
-        # Define base columns for merge
-        base_columns = [
-            ('meta', '', 'parent_rpc_id'),
-            ('meta', '', 'rpc_id'),
-            ('meta', '', section_name),
-            ('meta', '', address_col)
-        ]
-        filter_df = pd.DataFrame(base_filter_data, columns=base_columns)
-        # Ensure data types match
-        filter_df[('meta', '', 'parent_rpc_id')] = filter_df[('meta', '', 'parent_rpc_id')].astype('uint64')
-        filter_df[('meta', '', 'rpc_id')] = filter_df[('meta', '', 'rpc_id')].astype('uint64')
-        # Ensure column structure matches exactly
-        filter_df.columns = pd.MultiIndex.from_tuples(filter_df.columns)
-        # Convert to dask DataFrame
-        filter_ddf = dd.from_pandas(filter_df, npartitions=1)
-        # Perform the merge
-        filtered_ddf = ddf.merge(
-            filter_ddf,
-            on=base_columns,  # Always merge on the base columns
-            how='inner'
-        ).persist()
-        # Compute once
-        try:
-            filtered_df = filtered_ddf.compute()
-        except Exception as e:
-            raise ValueError(f"Error computing filtered dataframe: {e}")
-        if filtered_df.empty:
+                parent_rpc_id = self.rpc_id_dict[src]
+                rpc_id = self.rpc_id_dict[dest]
+                section_addr = src_address if view_type == 'servers' else dst_address
+                addr = dst_address if view_type == 'servers' else src_address
+                
+                try:
+                    # Use boolean indexing on the MultiIndex to filter rows
+                    mask = (
+                        (original_df.index.get_level_values('parent_rpc_id') == parent_rpc_id) &
+                        (original_df.index.get_level_values('rpc_id') == rpc_id) &
+                        (original_df.index.get_level_values(section_name) == section_addr) &
+                        (original_df.index.get_level_values(address_col) == addr)
+                    )
+                    matching_rows = original_df[mask]
+                    if not matching_rows.empty:
+                        filtered_rows.append(matching_rows)
+                except (KeyError, IndexError):
+                    # Skip this RPC if index values don't exist
+                    continue
+        if not filtered_rows:
             raise ValueError(error_msg)
+        # Concatenate all matching rows and keep the MultiIndex structure
+        filtered_df = pd.concat(filtered_rows)
         return filtered_df
 
     def _get_rpc_mean_and_variance_per_step(self, rpc_list, type, functions, aggregations):
         """
         Get mean and variance statistics for RPC functions using the modular approach.
+        Works with MultiIndex DataFrames directly.
         """
         mean_result = [0] * len(functions)
         var_result = [0] * len(functions)
@@ -867,38 +792,51 @@ class MochiPlotter:
             filtered_df = self._get_filtered_rpc_data(rpc_list, view_type)
         except ValueError as e:
             raise ValueError(str(e))
-        # Create grouping key
+        # Create grouping key using index values (no reset_index needed)
         section_name = 'received_from' if type == 'server' else 'sent_to'
-        filtered_df['rpc_key'] = (
-            filtered_df[('meta', '', 'parent_rpc_id')].astype(str) + '_' +
-            filtered_df[('meta', '', 'rpc_id')].astype(str) + '_' +
-            filtered_df[('meta', '', section_name)] + '_' +
-            filtered_df[('meta', '', 'address')]
+        try:
+            parent_rpc_values = filtered_df.index.get_level_values('parent_rpc_id')
+            rpc_values = filtered_df.index.get_level_values('rpc_id')
+            section_values = filtered_df.index.get_level_values(section_name)
+            address_values = filtered_df.index.get_level_values('address')
+        except KeyError as e:
+            available_levels = list(filtered_df.index.names)
+            raise ValueError(f"Index level access error in per_rpc_stats: {e}. Available levels: {available_levels}")
+        # Create a temporary Series with the index to make grouping keys
+        rpc_keys = (
+            parent_rpc_values.astype(str) + '_' +
+            rpc_values.astype(str) + '_' +
+            section_values + '_' +
+            address_values
         )
         # Process each function
         for func_idx, (func, agg) in enumerate(zip(functions, aggregations)):
             try:
-                # Group by RPC key and aggregate by provider ID
-                grouped = filtered_df.groupby('rpc_key').agg({
-                    (func, agg, 'var'): 'max', # Let's get the max var so we can be conservative in our analysis
-                    (func, agg, 'num'): 'sum',
-                    (func, agg, 'avg'): 'max',
-                    (func, agg, 'sum'): 'sum'
+                func_data = filtered_df[(func, agg)]
+                temp_df = pd.DataFrame({
+                    'rpc_key': rpc_keys,
+                    'var': func_data['var'],
+                    'num': func_data['num'],
+                    'avg': func_data['avg'],
+                    'sum': func_data['sum']
+                }, index=filtered_df.index)
+                grouped = temp_df.groupby('rpc_key').agg({
+                    'var': 'max',  # Conservative max variance
+                    'num': 'sum',
+                    'avg': 'max',
+                    'sum': 'sum'
                 })
                 if grouped.empty:   
                     continue
-                # Get valid data (where num > 0)
-                valid_data = grouped[grouped[(func, agg, 'num')] > 0]
+                valid_data = grouped[grouped['num'] > 0]
                 if valid_data.empty:
                     continue
-                # Calculate overall statistics
-                total_num = valid_data[(func, agg, 'num')].sum()
-                total_sum = valid_data[(func, agg, 'sum')].sum()
+                total_num = valid_data['num'].sum()
+                total_sum = valid_data['sum'].sum()
                 total_mean = total_sum / total_num
-                # Calculate variance using combining formula
-                d_squared = (valid_data[(func, agg, 'avg')] - total_mean) ** 2
-                total_variance = (valid_data[(func, agg, 'num')] * 
-                                (valid_data[(func, agg, 'var')] + d_squared)).sum() / total_num
+                d_squared = (valid_data['avg'] - total_mean) ** 2
+                total_variance = (valid_data['num'] * 
+                                (valid_data['var'] + d_squared)).sum() / total_num
                 mean_result[func_idx] = total_mean
                 var_result[func_idx] = total_variance
             except KeyError as e:
